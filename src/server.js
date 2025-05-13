@@ -10,6 +10,63 @@ const app = express();
 const server = http.createServer(app);
 const io = socketio(server, {cors: {origin: "*"}});
 
+// Stockage des meilleurs scores et des joueurs récents
+const leaderboard = [];
+const recentPlayers = [];
+const MAX_LEADERBOARD_SIZE = 10;
+const MAX_RECENT_PLAYERS = 5;
+
+// Fonction pour sauvegarder un score dans le classement
+function saveScore(player) {
+  // Ne pas enregistrer les scores anonymes ou vides
+  if (!player.pseudo || player.pseudo === 'Joueur') return;
+  
+  // Vérifier si le joueur existe déjà
+  const existingIndex = leaderboard.findIndex(p => p.pseudo === player.pseudo);
+  if (existingIndex >= 0) {
+    // Mettre à jour le score si c'est meilleur
+    if (player.score > leaderboard[existingIndex].score) {
+      leaderboard[existingIndex].score = player.score;
+      leaderboard[existingIndex].date = new Date().toISOString();
+    }
+  } else {
+    // Ajouter un nouveau joueur
+    leaderboard.push({
+      pseudo: player.pseudo,
+      score: player.score,
+      date: new Date().toISOString()
+    });
+  }
+  
+  // Trier et limiter la taille du classement
+  leaderboard.sort((a, b) => b.score - a.score);
+  if (leaderboard.length > MAX_LEADERBOARD_SIZE) {
+    leaderboard.length = MAX_LEADERBOARD_SIZE;
+  }
+}
+
+// Fonction pour enregistrer un joueur récent
+function addRecentPlayer(pseudo) {
+  if (!pseudo || pseudo === 'Joueur') return;
+  
+  // Supprimer si existe déjà
+  const existingIndex = recentPlayers.findIndex(p => p.pseudo === pseudo);
+  if (existingIndex >= 0) {
+    recentPlayers.splice(existingIndex, 1);
+  }
+  
+  // Ajouter en tête de liste
+  recentPlayers.unshift({
+    pseudo: pseudo,
+    time: new Date().toISOString()
+  });
+  
+  // Limiter la taille
+  if (recentPlayers.length > MAX_RECENT_PLAYERS) {
+    recentPlayers.length = MAX_RECENT_PLAYERS;
+  }
+}
+
 // Au lieu de servir simplement les fichiers statiques
 // On va intercepter la requête pour index.html
 app.get('/', (req, res) => {
