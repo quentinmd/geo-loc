@@ -4,11 +4,62 @@ const http = require('http');
 const socketio = require('socket.io');
 const path = require('path');
 const fs = require('fs');
+const mongoose = require('mongoose');
 require('dotenv').config(); // Chargement des variables d'environnement
 
 const app = express();
 const server = http.createServer(app);
 const io = socketio(server, {cors: {origin: "*"}});
+
+// Chaîne de connexion (remplacez par la vôtre)
+const MONGODB_URI = 'mongodb+srv://qmouraud:RWRk4FgMHqpDDvBs@geoloc.oydw5i7.mongodb.net/?retryWrites=true&w=majority&appName=GeoLOCy';
+
+// Connexion à MongoDB
+mongoose.connect(MONGODB_URI, {
+  useNewUrlParser: true,
+  useUnifiedTopology: true
+})
+.then(() => console.log('MongoDB connecté'))
+.catch(err => console.error('Erreur MongoDB:', err));
+
+// Créer un modèle pour les statistiques
+const StatsSchema = new mongoose.Schema({
+  id: { type: String, default: 'global' },
+  online: { type: Number, default: 0 },
+  total: { type: Number, default: 0 },
+  lastUpdated: { type: Date, default: Date.now }
+});
+
+const Stats = mongoose.model('Stats', StatsSchema);
+
+// Remplacer vos variables de statistiques par ceci
+let onlinePlayers = 0;
+let totalPlayers = 0;
+
+// Charger les statistiques au démarrage
+async function initStats() {
+  try {
+    const stats = await Stats.findOne({ id: 'global' });
+    if (stats) {
+      totalPlayers = stats.total;
+      console.log(`Statistiques chargées: ${totalPlayers} joueurs au total`);
+    } else {
+      // Créer un document de statistiques s'il n'existe pas
+      await Stats.create({ 
+        id: 'global', 
+        online: 0, 
+        total: 0,
+        lastUpdated: new Date()
+      });
+      console.log('Document de statistiques créé');
+    }
+  } catch (err) {
+    console.error('Erreur lors du chargement des statistiques:', err);
+  }
+}
+
+// Appeler cette fonction au démarrage
+initStats();
 
 // Stockage des meilleurs scores et des joueurs récents
 const leaderboard = [];
@@ -90,20 +141,6 @@ app.get('/', (req, res) => {
 app.use(express.static(path.join(__dirname, 'public')));
 
 const games = new Map();
-
-// Statistiques des joueurs
-let onlinePlayers = 0;
-let totalPlayers = 0;
-
-// Charger le nombre total de joueurs depuis un fichier si disponible
-try {
-  const statsData = fs.readFileSync(path.join(__dirname, 'player-stats.json'), 'utf8');
-  const stats = JSON.parse(statsData);
-  totalPlayers = stats.total || 0;
-} catch (err) {
-  console.log('Aucune statistique précédente trouvée, démarrage à zéro');
-  totalPlayers = 0;
-}
 
 io.on('connection', (socket) => {
   console.log('Nouvelle connexion:', socket.id);
@@ -368,12 +405,21 @@ function generateGameId() {
 }
 
 // Fonction pour sauvegarder les statistiques
-function savePlayerStats() {
-  fs.writeFileSync(
-    path.join(__dirname, 'player-stats.json'),
-    JSON.stringify({ total: totalPlayers }),
-    'utf8'
-  );
+async function savePlayerStats() {
+  try {
+    await Stats.findOneAndUpdate(
+      { id: 'global' },
+      { 
+        online: onlinePlayers,
+        total: totalPlayers,
+        lastUpdated: new Date()
+      },
+      { upsert: true }
+    );
+    console.log(`Statistiques sauvegardées: ${onlinePlayers} en ligne, ${totalPlayers} au total`);
+  } catch (err) {
+    console.error('Erreur lors de la sauvegarde des statistiques:', err);
+  }
 }
 
 const PORT = process.env.PORT || 3000;
