@@ -91,6 +91,20 @@ app.use(express.static(path.join(__dirname, 'public')));
 
 const games = new Map();
 
+// Statistiques des joueurs
+let onlinePlayers = 0;
+let totalPlayers = 0;
+
+// Charger le nombre total de joueurs depuis un fichier si disponible
+try {
+  const statsData = fs.readFileSync(path.join(__dirname, 'player-stats.json'), 'utf8');
+  const stats = JSON.parse(statsData);
+  totalPlayers = stats.total || 0;
+} catch (err) {
+  console.log('Aucune statistique précédente trouvée, démarrage à zéro');
+  totalPlayers = 0;
+}
+
 io.on('connection', (socket) => {
   console.log('Nouvelle connexion:', socket.id);
 
@@ -351,20 +365,6 @@ async function generateLocations(count) {
 
 function generateGameId() {
   return Math.random().toString(36).substr(2, 6).toUpperCase();
-}
-
-// Statistiques des joueurs
-let onlinePlayers = 0;
-let totalPlayers = 20;
-
-// Charger le nombre total de joueurs depuis un fichier si disponible
-try {
-  const statsData = fs.readFileSync(path.join(__dirname, 'player-stats.json'), 'utf8');
-  const stats = JSON.parse(statsData);
-  totalPlayers = stats.total || 0;
-} catch (err) {
-  console.log('Aucune statistique précédente trouvée, démarrage à zéro');
-  totalPlayers = 0;
 }
 
 // Fonction pour sauvegarder les statistiques
