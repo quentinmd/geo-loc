@@ -1,0 +1,981 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>GeoGuessr Solo & Multijoueur</title>
+    <meta charset="utf-8">
+    <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+    <style>
+        /* === BASE === */
+        html, body {
+            height: 100%;
+            margin: 0;
+            padding: 0;
+            background: #222;
+            font-family: Arial, sans-serif;
+            overflow: hidden;
+        }
+
+        /* === MENU === */
+        .menu-container {
+            max-width: 500px;
+            margin: 50px auto;
+            padding: 30px;
+            background: #fff;
+            border-radius: 15px;
+            box-shadow: 0 0 20px rgba(0,0,0,0.2);
+            text-align: center;
+        }
+        h1 {
+            color: #2d6a4f;
+            margin-bottom: 30px;
+        }
+        .form-group {
+            margin: 20px 0;
+        }
+        input[type="text"], input[type="number"], select {
+            width: 80%;
+            padding: 10px;
+            margin: 10px 0;
+            border: 2px solid #b7e4c7;
+            border-radius: 5px;
+            font-size: 16px;
+        }
+
+        /* === BUTTONS === */
+        .btn {
+            background: #40916c;
+            color: #fff;
+            border: none;
+            padding: 12px 30px;
+            border-radius: 25px;
+            cursor: pointer;
+            font-size: 16px;
+            transition: all 0.3s;
+            margin: 8px;
+        }
+        .btn:hover {
+            background: #2d6a4f;
+            transform: translateY(-2px);
+        }
+        .btn:disabled {
+            background: #95d5b2;
+            cursor: not-allowed;
+        }
+
+        /* === GAME SECTIONS === */
+        #game-container, #game, #loading-screen, #result-info, #results {
+            display: none;
+        }
+
+        /* === STREET VIEW & MAP === */
+        #street-view, #street-view-multi {
+            height: 100vh;
+            width: 100vw;
+            position: absolute;
+            top: 0;
+            left: 0;
+            z-index: 1;
+        }
+        #map, #map-multi {
+            position: fixed !important; /* Force l'application du style */
+            bottom: 100px !important;
+            right: 40px !important;
+            left: auto !important; /* Empêche l'alignement à gauche */
+            top: auto !important; /* Empêche l'alignement en haut */
+            width: 300px !important;
+            height: 200px !important;
+            border: 3px solid #fff;
+            border-radius: 15px;
+            box-shadow: 0 0 20px rgba(0,0,0,0.3);
+            z-index: 1000;
+            background: #eee;
+            transition: transform 0.3s;
+            transform-origin: bottom right;
+        }
+        #map:hover, #map-multi:hover {
+            transform: scale(1.15);
+        }
+
+        /* === HUD & TIMER === */
+        #hud, #hud-multi {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            background: rgba(255,255,255,0.95);
+            padding: 15px 25px;
+            border-radius: 10px;
+            box-shadow: 0 0 15px rgba(0,0,0,0.1);
+            z-index: 1000;
+            min-width: 220px;
+        }
+        #timer, #timer-multi {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: rgba(0,0,0,0.7);
+            color: #fff;
+            padding: 10px 20px;
+            border-radius: 20px;
+            font-size: 1.2em;
+            z-index: 1000;
+        }
+
+        /* === SUBMIT BUTTONS === */
+        #submit-btn, #submit-btn-multi {
+            position: fixed;
+            bottom: 30px;
+            right: 30px;
+            width: 300px;
+            padding: 15px 0;
+            font-size: 1.1em;
+            z-index: 1001;
+        }
+
+        /* === RESULT MODALS === */
+        #result-info, #results {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(255,255,255,0.95);
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 0 20px rgba(0,0,0,0.3);
+            z-index: 2000;
+            min-width: 250px;
+            text-align: center;
+        }
+        #result-info, #results { display: none; }
+
+        /* === LOADING === */
+        #loading-screen {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background: rgba(0,0,0,0.7);
+            z-index: 2000;
+            justify-content: center;
+            align-items: center;
+            flex-direction: column;
+            color: #fff;
+        }
+        .loader {
+            border: 5px solid #f3f3f3;
+            border-top: 5px solid #40916c;
+            border-radius: 50%;
+            width: 50px;
+            height: 50px;
+            animation: spin 1s linear infinite;
+            margin-bottom: 20px;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg);}
+            100% { transform: rotate(360deg);}
+        }
+
+        /* === RESPONSIVE === */
+        @media (max-width: 700px) {
+            #map, #map-multi, #submit-btn, #submit-btn-multi {
+                width: 95vw;
+                left: 2.5vw;
+                right: auto;
+            }
+            #map, #map-multi {
+                height: 120px;
+                bottom: 80px;
+            }
+            #submit-btn, #submit-btn-multi {
+                bottom: 20px;
+            }
+            #hud, #hud-multi {
+                left: 5vw;
+                padding: 8px 8px;
+                font-size: 0.9em;
+            }
+            #timer, #timer-multi {
+                right: 5vw;
+                padding: 6px 10px;
+                font-size: 1em;
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- Menu principal -->
+    <div class="menu-container" id="menu">
+        <h1>GeoGuessr Clone</h1>
+        <div class="form-group">
+            <input type="text" id="pseudo" placeholder="Votre pseudo">
+        </div>
+        <div class="form-group">
+            <select id="rounds" class="btn">
+                <option value="3">3 manches</option>
+                <option value="5" selected>5 manches</option>
+                <option value="10">10 manches</option>
+            </select>
+        </div>
+        <button class="btn" onclick="startSolo()">Jouer en solo</button>
+        <button class="btn" onclick="showMultiMenu()">Jouer en multijoueur</button>
+    </div>
+
+    <!-- Menu multijoueur -->
+    <div class="menu-container" id="menu-multi" style="display:none;">
+        <h1>Multijoueur</h1>
+        <button class="btn" onclick="createGame()">Créer une partie</button>
+        <div style="margin:20px 0;">OU</div>
+        <input type="text" id="join-code" placeholder="Code partie" style="width:120px;text-transform:uppercase;">
+        <button class="btn" onclick="joinGame()">Rejoindre</button>
+        <button class="btn" onclick="backToMain()">Retour</button>
+        <div id="menu-error" style="color:red;margin-top:10px;"></div>
+    </div>
+
+    <!-- Lobby multijoueur -->
+    <div class="menu-container" id="lobby" style="display:none;">
+        <h1>Salle d'attente</h1>
+        <div id="game-code-display" style="margin:20px 0;font-size:24px;font-weight:bold;"></div>
+        <p>Partagez ce code avec vos amis pour qu'ils rejoignent la partie</p>
+        
+        <!-- Ajout du sélecteur de manches pour l'hôte -->
+        <div class="form-group" id="host-options" style="display:none;">
+            <label>Nombre de manches:</label>
+            <select id="lobby-rounds" class="btn">
+                <option value="3">3 manches</option>
+                <option value="5" selected>5 manches</option>
+                <option value="10">10 manches</option>
+            </select>
+        </div>
+        
+        <h3>Joueurs</h3>
+        <ul id="player-list" style="list-style:none;padding:0;"></ul>
+        <button id="start-multi-btn" class="btn" style="margin-top:20px;" onclick="startMultiGame()">Lancer la partie</button>
+        <button class="btn" onclick="backToMain()">Annuler</button>
+    </div>
+
+    <!-- Écran de chargement -->
+    <div id="loading-screen">
+        <div class="loader"></div>
+        <div id="loading-text">Chargement des manches...</div>
+    </div>
+
+    <!-- Résultat de la manche (solo) -->
+    <div id="result-info"></div>
+    <!-- Résultat de la manche (multi) -->
+    <div id="results"></div>
+
+    <!-- Interface solo -->
+    <div id="game-container">
+        <div id="street-view"></div>
+        <div id="map"></div>
+        <div id="hud">
+            <div id="score">Score: 0</div>
+            <div>Manche: <span id="current-round">1</span>/<span id="total-rounds">5</span></div>
+        </div>
+        <div id="timer">40s</div>
+        <button class="btn" id="submit-btn" onclick="submitGuess()">Valider la position</button>
+    </div>
+
+    <!-- Interface multi -->
+    <div id="game" style="display:none;">
+        <div id="street-view-multi"></div>
+        <div id="map-multi"></div>
+        <div id="hud-multi">
+            <div id="score-multi">Score: 0</div>
+            <div>Manche: <span id="current-round-multi">1</span>/<span id="total-rounds-multi">5</span></div>
+        </div>
+        <div id="timer-multi">40s</div>
+        <button class="btn" id="submit-btn-multi" onclick="submitGuessMulti()">Valider la position</button>
+    </div>
+
+    <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyDZohfb9PGf9qf4TwjSPAGqrTVK_I99AZE"></script>
+    <script>
+        // Initialisation de la connexion Socket.io
+        const socket = io('http://localhost:3000');
+        
+        // Variables globales
+        let gameConfig = {
+            rounds: 5,
+            pseudo: 'Joueur',
+            locations: [],
+            currentRound: 0,
+            score: 0,
+            timer: null,
+            timeLeft: 40,
+            guessMarker: null,
+            answerMarker: null,
+            panorama: null,
+            map: null,
+            canGuess: true
+        };
+        
+        // Nouvelle variable pour le mode multijoueur
+        let multiConfig = {
+            gameId: null,
+            players: [],
+            locations: [],
+            currentRound: 0,
+            score: 0,
+            timer: null,
+            timeLeft: 40,
+            guessMarker: null,
+            answerMarker: null,
+            panorama: null,
+            map: null,
+            canGuess: true
+        };
+        
+        function startGame() {
+            gameConfig.pseudo = document.getElementById('pseudo').value || 'Joueur';
+            gameConfig.rounds = parseInt(document.getElementById('rounds').value);
+            document.querySelector('.menu-container').style.display = 'none';
+            document.getElementById('loading-screen').style.display = 'flex';
+            gameConfig.locations = [];
+            gameConfig.currentRound = 0;
+            gameConfig.score = 0;
+            loadGame();
+        }
+
+        async function loadGame() {
+            const sv = new google.maps.StreetViewService();
+            for(let i = 0; i < gameConfig.rounds; i++) {
+                const location = await findValidLocation(sv);
+                gameConfig.locations.push(location);
+                updateLoaderProgress(i + 1);
+            }
+            initializeGame();
+        }
+
+        async function findValidLocation(sv) {
+            return new Promise(resolve => {
+                const tryLocation = () => {
+                    const lat = Math.random() * 160 - 80;
+                    const lng = Math.random() * 360 - 180;
+                    sv.getPanorama({location: {lat, lng}, radius: 1000}, (data, status) => {
+                        if (status === 'OK') {
+                            resolve(data.location.latLng);
+                        } else {
+                            tryLocation();
+                        }
+                    });
+                };
+                tryLocation();
+            });
+        }
+
+        function updateLoaderProgress(current) {
+            const percent = Math.round((current / gameConfig.rounds) * 100);
+            document.getElementById('loading-text').textContent = `Chargement ${percent}% (${current}/${gameConfig.rounds})`;
+        }
+
+        function initializeGame() {
+            document.getElementById('loading-screen').style.display = 'none';
+            document.getElementById('game-container').style.display = 'block';
+            
+            // Initialisation Street View
+            gameConfig.panorama = new google.maps.StreetViewPanorama(
+                document.getElementById('street-view'), 
+                {
+                    disableDefaultUI: true,
+                    zoomControl: true,
+                    addressControl: false,
+                    fullscreenControl: false
+                }
+            );
+
+            // Initialisation carte
+            gameConfig.map = new google.maps.Map(document.getElementById('map'), {
+                center: {lat: 0, lng: 0},
+                zoom: 2,
+                minZoom: 2,
+                streetViewControl: false,
+                mapTypeControl: false,
+                fullscreenControl: false
+            });
+
+            // Écouteur de clic sur la carte
+            gameConfig.map.addListener('click', (e) => {
+                if(!gameConfig.canGuess) return;
+                if(gameConfig.guessMarker) gameConfig.guessMarker.setMap(null);
+                gameConfig.guessMarker = new google.maps.Marker({
+                    position: e.latLng,
+                    map: gameConfig.map,
+                    icon: {
+                        url: 'http://maps.google.com/mapfiles/ms/icons/red-dot.png'
+                    }
+                });
+            });
+
+            // Configuration HUD
+            document.getElementById('total-rounds').textContent = gameConfig.rounds;
+            startRound();
+        }
+
+        function startRound() {
+            gameConfig.timeLeft = 40;
+            gameConfig.canGuess = true;
+            if(gameConfig.guessMarker) gameConfig.guessMarker.setMap(null);
+            if(gameConfig.answerMarker) gameConfig.answerMarker.setMap(null);
+            gameConfig.guessMarker = null;
+            gameConfig.answerMarker = null;
+            
+            document.getElementById('timer').textContent = '40s';
+            document.getElementById('submit-btn').disabled = false;
+            document.getElementById('score').textContent = `Score: ${gameConfig.score}`;
+            document.getElementById('current-round').textContent = (gameConfig.currentRound+1).toString();
+            document.getElementById('hud').style.background = 'rgba(255,255,255,0.95)';
+            document.getElementById('hud').innerHTML = `
+                <div id="score">Score: ${gameConfig.score}</div>
+                <div>Manche: <span id="current-round">${gameConfig.currentRound + 1}</span>/<span id="total-rounds">${gameConfig.rounds}</span></div>
+            `;
+            
+            // Important: Positionnement correct de la Street View
+            gameConfig.panorama.setPosition(gameConfig.locations[gameConfig.currentRound]);
+            gameConfig.panorama.setPov({heading: 0, pitch: 0});
+            gameConfig.panorama.setVisible(true);
+            
+            // Réinitialisation de la carte
+            gameConfig.map.setCenter({lat: 0, lng: 0});
+            gameConfig.map.setZoom(2);
+            gameConfig.map.setOptions({ draggable: true, zoomControl: true });
+            
+            clearInterval(gameConfig.timer);
+            gameConfig.timer = setInterval(() => {
+                gameConfig.timeLeft--;
+                document.getElementById('timer').textContent = `${gameConfig.timeLeft}s`;
+                if(gameConfig.timeLeft <= 0) {
+                    clearInterval(gameConfig.timer);
+                    document.getElementById('submit-btn').disabled = true;
+                    submitGuess(true);
+                }
+            }, 1000);
+        }
+
+        function submitGuess(auto=false) {
+            if(!gameConfig.canGuess) return;
+            gameConfig.canGuess = false;
+            clearInterval(gameConfig.timer);
+            document.getElementById('submit-btn').disabled = true;
+            gameConfig.map.setOptions({ draggable: false, zoomControl: false });
+            
+            const guessPosition = gameConfig.guessMarker?.getPosition() || gameConfig.map.getCenter();
+            const realPosition = gameConfig.locations[gameConfig.currentRound];
+            
+            const distance = calculateDistance(realPosition, guessPosition);
+            const roundScore = calculateScore(distance);
+            gameConfig.score += roundScore;
+            
+            if(gameConfig.answerMarker) gameConfig.answerMarker.setMap(null);
+            gameConfig.answerMarker = new google.maps.Marker({
+                position: realPosition,
+                map: gameConfig.map,
+                icon: {
+                    url: "http://maps.google.com/mapfiles/ms/icons/green-dot.png"
+                }
+            });
+
+            // Ajout du dézoom pour voir les deux points
+            const bounds = new google.maps.LatLngBounds();
+            bounds.extend(guessPosition);
+            bounds.extend(realPosition);
+            gameConfig.map.fitBounds(bounds, { padding: 50 });
+            
+            // Affichage du résultat
+            document.getElementById('result-info').style.display = 'block';
+            document.getElementById('result-info').innerHTML = `
+                <h3>Résultat</h3>
+                <p><b>Distance :</b> ${distance.toFixed(2)} km</p>
+                <p><b>Points :</b> ${roundScore}</p>
+                <p>Chargement de la manche suivante...</p>
+            `;
+
+            // Passage automatique à la manche suivante
+            setTimeout(() => {
+                document.getElementById('result-info').style.display = 'none';
+                
+                if(gameConfig.currentRound < gameConfig.rounds - 1) {
+                    gameConfig.currentRound++;
+                    startRound();
+                } else {
+                    endGame();
+                }
+            }, 2000);
+        }
+
+        function calculateDistance(pos1, pos2) {
+            const R = 6371;
+            const dLat = (pos2.lat() - pos1.lat()) * Math.PI / 180;
+            const dLon = (pos2.lng() - pos1.lng()) * Math.PI / 180;
+            const a = 
+                Math.sin(dLat/2) * Math.sin(dLat/2) +
+                Math.cos(pos1.lat() * Math.PI / 180) * 
+                Math.cos(pos2.lat() * Math.PI / 180) * 
+                Math.sin(dLon/2) * Math.sin(dLon/2);
+            return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+        }
+        
+        function calculateScore(distance) {
+            if(distance >= 3000) return 0;
+            return Math.round(5000 * Math.pow((3000 - distance)/3000, 2.5));
+        }
+
+        function endGame() {
+            document.getElementById('game-container').innerHTML = `
+                <div style="text-align:center; padding: 50px; color: white;">
+                    <h2>Partie terminée !</h2>
+                    <p>Score final : ${gameConfig.score} points</p>
+                    <button class="btn" onclick="location.reload()">Rejouer</button>
+                </div>
+            `;
+        }
+
+        // Fonctions pour la navigation entre les menus
+        function startSolo() {
+            // Appelle la fonction startGame() existante
+            startGame();
+        }
+
+        function showMultiMenu() {
+            // Cache le menu principal et affiche le menu multijoueur
+            document.getElementById('menu').style.display = 'none';
+            document.getElementById('menu-multi').style.display = 'block';
+        }
+
+        function backToMain() {
+            // Retourne au menu principal depuis n'importe quel sous-menu
+            document.getElementById('menu').style.display = 'block';
+            document.getElementById('menu-multi').style.display = 'none';
+            document.getElementById('lobby').style.display = 'none';
+            document.getElementById('menu-error').textContent = '';
+            
+            // Si on quitte un lobby, informer le serveur
+            if (multiConfig.gameId) {
+                socket.emit('leaveGame', multiConfig.gameId);
+                multiConfig.gameId = null;
+                multiConfig.players = [];
+            }
+        }
+
+        // Fonctions pour le multijoueur (squelettes de base)
+        function createGame() {
+            const pseudo = document.getElementById('pseudo').value;
+            const rounds = parseInt(document.getElementById('rounds').value);
+            if (!pseudo) {
+                document.getElementById('menu-error').textContent = 'Veuillez entrer un pseudo';
+                return;
+            }
+            
+            // Envoyer la demande de création au serveur
+            socket.emit('createGame', { pseudo, rounds });
+        }
+
+        function joinGame() {
+            const pseudo = document.getElementById('pseudo').value;
+            const gameCode = document.getElementById('join-code').value.trim().toUpperCase();
+            
+            if (!pseudo) {
+                document.getElementById('menu-error').textContent = 'Veuillez entrer un pseudo';
+                return;
+            }
+            if (!gameCode) {
+                document.getElementById('menu-error').textContent = 'Code de partie invalide';
+                return;
+            }
+            
+            // Envoyer la demande de rejoindre au serveur
+            socket.emit('joinGame', gameCode, pseudo);
+        }
+
+        function startMultiGame() {
+            const rounds = parseInt(document.getElementById('lobby-rounds').value);
+            console.log(`Démarrage de la partie multijoueur avec ${rounds} manches`);
+            socket.emit('startMultiGame', multiConfig.gameId, rounds);
+            // Le serveur va demander de générer des emplacements
+        }
+
+        function showLobby(gameId) {
+            document.getElementById('menu-multi').style.display = 'none';
+            document.getElementById('lobby').style.display = 'block';
+            document.getElementById('game-code-display').textContent = 'Code: ' + gameId;
+            multiConfig.gameId = gameId;
+        }
+
+        function updatePlayerList(players) {
+            const playerList = document.getElementById('player-list');
+            playerList.innerHTML = '';
+            
+            // Vérifier si le joueur courant est l'hôte
+            const isHost = players.some(p => p.id === socket.id && p.isHost);
+            document.getElementById('host-options').style.display = isHost ? 'block' : 'none';
+            document.getElementById('start-multi-btn').style.display = isHost ? 'block' : 'none';
+            
+            players.forEach(player => {
+                const li = document.createElement('li');
+                li.textContent = player.pseudo + (player.isHost ? ' (Hôte)' : '');
+                li.style.padding = '8px';
+                li.style.margin = '5px 0';
+                li.style.backgroundColor = 'rgba(255,255,255,0.5)';
+                li.style.borderRadius = '5px';
+                playerList.appendChild(li);
+            });
+        }
+
+        // Écouteurs d'événements Socket.io
+        socket.on('gameCreated', (gameId) => {
+            console.log('Partie créée avec le code:', gameId);
+            showLobby(gameId);
+        });
+
+        socket.on('playerJoined', (players) => {
+            console.log('Liste des joueurs mise à jour:', players);
+            multiConfig.players = players;
+            updatePlayerList(players);
+        });
+
+        socket.on('gameError', (message) => {
+            document.getElementById('menu-error').textContent = message;
+        });
+
+        // Dans votre section "Écouteurs d'événements Socket.io", ajoutez :
+        socket.on('joinedGame', (gameId, players) => {
+            console.log('Partie rejointe avec le code:', gameId);
+            showLobby(gameId);
+            multiConfig.players = players;
+            updatePlayerList(players);
+        });
+
+        // Ajoutez également un écouteur pour le démarrage de la partie :
+        socket.on('gameStarted', (gameData) => {
+    console.log('La partie commence:', gameData);
+    document.getElementById('lobby').style.display = 'none';
+    document.getElementById('loading-screen').style.display = 'flex';
+    document.getElementById('loading-text').textContent = 'Validation des emplacements...';
+    
+    // Initialiser la configuration de la partie multijoueur
+    multiConfig.locations = [];  // On va reconstruire cette liste
+    multiConfig.currentRound = 0;
+    multiConfig.players = gameData.players;
+    
+    // Vérifier et valider tous les emplacements Street View
+    const sv = new google.maps.StreetViewService();
+    
+    // Vérifier chaque emplacement séquentiellement et remplacer les invalides
+    async function verifyLocations(index = 0) {
+        if (index >= gameData.locations.length) {
+            // Tous les emplacements sont validés, démarrer le jeu
+            document.getElementById('loading-text').textContent = 'Lancement du jeu...';
+            setTimeout(() => {
+                document.getElementById('loading-screen').style.display = 'none';
+                document.getElementById('game').style.display = 'block';
+                document.getElementById('total-rounds-multi').textContent = gameData.rounds;
+                initMultiGame();
+            }, 1000);
+            return;
+        }
+        
+        const location = gameData.locations[index];
+        document.getElementById('loading-text').textContent = 
+            `Validation des emplacements... (${index+1}/${gameData.locations.length})`;
+        
+        // Créer un objet LatLng de Google Maps
+        const position = new google.maps.LatLng(location.lat, location.lng);
+        
+        // Vérifier si l'emplacement est valide
+        try {
+            const result = await checkValidPanorama(sv, position);
+            multiConfig.locations.push(result);  // Stocker l'emplacement valide
+            console.log(`Emplacement ${index+1} validé`);
+            verifyLocations(index + 1);
+        } catch (e) {
+            console.error(`Emplacement ${index+1} invalide, recherche d'un nouvel emplacement...`);
+            // Si l'emplacement est invalide, en trouver un nouveau
+            try {
+                const newLocation = await findValidLocation(sv);
+                multiConfig.locations.push({
+                    lat: newLocation.lat(),
+                    lng: newLocation.lng()
+                });
+                console.log(`Nouvel emplacement ${index+1} trouvé`);
+                verifyLocations(index + 1);
+            } catch (err) {
+                console.error("Impossible de trouver un nouvel emplacement valide", err);
+                // Réessayer
+                setTimeout(() => verifyLocations(index), 500);
+            }
+        }
+    }
+    
+    // Démarrer la vérification
+    verifyLocations();
+});
+
+// Fonction utilitaire pour vérifier si un panorama est valide
+function checkValidPanorama(streetViewService, position) {
+    return new Promise((resolve, reject) => {
+        streetViewService.getPanorama({
+            location: position,
+            radius: 100
+        }, (data, status) => {
+            if (status === 'OK') {
+                resolve({
+                    lat: data.location.latLng.lat(),
+                    lng: data.location.latLng.lng()
+                });
+            } else {
+                reject(status);
+            }
+        });
+    });
+}
+
+        function initMultiGame() {
+    console.log("Initialisation du jeu multijoueur");
+    
+    // Initialisation Street View pour le multijoueur
+    multiConfig.panorama = new google.maps.StreetViewPanorama(
+        document.getElementById('street-view-multi'), 
+        {
+            disableDefaultUI: true,
+            zoomControl: true,
+            addressControl: false,
+            fullscreenControl: false
+        }
+    );
+
+    // Initialisation carte pour le multijoueur
+    multiConfig.map = new google.maps.Map(document.getElementById('map-multi'), {
+        center: {lat: 0, lng: 0},
+        zoom: 2,
+        minZoom: 2,
+        streetViewControl: false,
+        mapTypeControl: false,
+        fullscreenControl: false
+    });
+
+    // Force le positionnement correct de la carte
+    const mapElement = document.getElementById('map-multi');
+    mapElement.style.position = 'fixed';
+    mapElement.style.bottom = '90px';
+    mapElement.style.right = '30px';
+    mapElement.style.left = 'auto';
+    mapElement.style.top = 'auto';
+
+    // Écouteur de clic sur la carte
+    multiConfig.map.addListener('click', (e) => {
+        if(!multiConfig.canGuess) return;
+        if(multiConfig.guessMarker) multiConfig.guessMarker.setMap(null);
+        multiConfig.guessMarker = new google.maps.Marker({
+            position: e.latLng,
+            map: multiConfig.map,
+            icon: {
+                url: 'http://maps.google.com/mapfiles/ms/icons/red-dot.png'
+            }
+        });
+    });
+
+    // Démarrer la première manche
+    startMultiRound();
+}
+
+function startMultiRound() {
+    console.log("Démarrage de la manche multijoueur", multiConfig.currentRound);
+    
+    multiConfig.timeLeft = 40;
+    multiConfig.canGuess = true;
+    if(multiConfig.guessMarker) multiConfig.guessMarker.setMap(null);
+    if(multiConfig.answerMarker) multiConfig.answerMarker.setMap(null);
+    multiConfig.guessMarker = null;
+    multiConfig.answerMarker = null;
+    
+    document.getElementById('timer-multi').textContent = '40s';
+    document.getElementById('submit-btn-multi').disabled = false;
+    document.getElementById('score-multi').textContent = `Score: ${multiConfig.score || 0}`;
+    document.getElementById('current-round-multi').textContent = (multiConfig.currentRound+1).toString();
+    
+    // Les emplacements ont déjà été validés lors du chargement
+    const location = multiConfig.locations[multiConfig.currentRound];
+    if (location) {
+        console.log("Position panorama:", location);
+        const position = new google.maps.LatLng(location.lat, location.lng);
+        
+        // Plus besoin de vérifier, on sait que l'emplacement est valide
+        multiConfig.panorama.setPosition(position);
+        multiConfig.panorama.setPov({heading: 0, pitch: 0});
+        multiConfig.panorama.setVisible(true);
+        
+        // Réinitialisation de la carte
+        multiConfig.map.setCenter({lat: 0, lng: 0});
+        multiConfig.map.setZoom(2);
+        multiConfig.map.setOptions({ draggable: true, zoomControl: true });
+        
+        // Démarrer le timer
+        startMultiTimer();
+    } else {
+        console.error("Emplacement non défini pour la manche", multiConfig.currentRound);
+    }
+}
+
+function startMultiTimer() {
+    clearInterval(multiConfig.timer);
+    multiConfig.timer = setInterval(() => {
+        multiConfig.timeLeft--;
+        document.getElementById('timer-multi').textContent = `${multiConfig.timeLeft}s`;
+        if(multiConfig.timeLeft <= 0) {
+            clearInterval(multiConfig.timer);
+            document.getElementById('submit-btn-multi').disabled = true;
+            submitGuessMulti(true);
+        }
+    }, 1000);
+}
+
+function submitGuessMulti(auto = false) {
+    if(!multiConfig.canGuess) return;
+    multiConfig.canGuess = false;
+    clearInterval(multiConfig.timer);
+    document.getElementById('submit-btn-multi').disabled = true;
+    multiConfig.map.setOptions({ draggable: false, zoomControl: false });
+    
+    const guessPosition = multiConfig.guessMarker?.getPosition() || multiConfig.map.getCenter();
+    const realPosition = new google.maps.LatLng(
+        multiConfig.locations[multiConfig.currentRound].lat, 
+        multiConfig.locations[multiConfig.currentRound].lng
+    );
+    
+    const distance = calculateDistance(realPosition, guessPosition);
+    const roundScore = calculateScore(distance);
+    multiConfig.score = (multiConfig.score || 0) + roundScore;
+    
+    if(multiConfig.answerMarker) multiConfig.answerMarker.setMap(null);
+    multiConfig.answerMarker = new google.maps.Marker({
+        position: realPosition,
+        map: multiConfig.map,
+        icon: {
+            url: "http://maps.google.com/mapfiles/ms/icons/green-dot.png"
+        }
+    });
+
+    // Ajout du dézoom pour voir les deux points
+    const bounds = new google.maps.LatLngBounds();
+    bounds.extend(guessPosition);
+    bounds.extend(realPosition);
+    multiConfig.map.fitBounds(bounds, { padding: 50 });
+    
+    // Affichage du résultat temporaire en attendant les autres joueurs
+    document.getElementById('results').style.display = 'block';
+    document.getElementById('results').innerHTML = `
+        <h3>Votre résultat</h3>
+        <p><b>Distance :</b> ${Math.round(distance)} km</p>
+        <p><b>Points :</b> ${roundScore}</p>
+        <p>En attente des autres joueurs...</p>
+        <div class="loader" style="margin:15px auto;"></div>
+    `;
+
+    // Envoyer le résultat au serveur au lieu de passer à la manche suivante localement
+    socket.emit('submitGuess', multiConfig.gameId, {
+        distance: distance,
+        score: roundScore,
+        round: multiConfig.currentRound
+    });
+}
+
+function endMultiGame() {
+    document.getElementById('game').innerHTML = `
+        <div style="text-align:center; padding: 50px; color: white;">
+            <h2>Partie terminée !</h2>
+            <p>Votre score final: ${multiConfig.score}</p>
+            <button class="btn" onclick="backToMain()">Retour au menu</button>
+        </div>
+    `;
+}
+
+// Ajoutez cet écouteur d'événement
+socket.on('requestLocations', async (gameId, roundCount) => {
+    console.log(`Génération de ${roundCount} emplacements pour la partie ${gameId}`);
+    document.getElementById('loading-screen').style.display = 'flex';
+    document.getElementById('loading-text').textContent = 'Génération des emplacements...';
+    
+    // Générer des emplacements valides
+    const sv = new google.maps.StreetViewService();
+    const locations = [];
+    
+    for (let i = 0; i < roundCount; i++) {
+        document.getElementById('loading-text').textContent = 
+            `Génération des emplacements... (${i+1}/${roundCount})`;
+            
+        try {
+            const location = await findValidLocation(sv);
+            locations.push({ 
+                lat: location.lat(), 
+                lng: location.lng() 
+            });
+            console.log(`Emplacement ${i+1}/${roundCount} trouvé`);
+        } catch (err) {
+            console.error("Erreur lors de la génération d'un emplacement, réessai...", err);
+            i--; // Réessayer
+        }
+    }
+    
+    console.log(`${locations.length} emplacements générés et envoyés au serveur`);
+    // Envoyer les emplacements au serveur
+    socket.emit('proposeLocations', gameId, locations);
+});
+
+    // Ajouter ces écouteurs à la fin de votre script
+
+    // Quand tous les joueurs ont répondu, le serveur envoie les résultats
+    socket.on('roundComplete', (results) => {
+        document.getElementById('results').innerHTML = `
+            <h3>Résultats de la manche</h3>
+            <table style="width:100%; border-collapse: collapse; margin: 10px 0">
+                <tr style="border-bottom: 1px solid #ddd;">
+                    <th style="text-align:left; padding: 5px">Joueur</th>
+                    <th style="text-align:right; padding: 5px">Distance</th>
+                    <th style="text-align:right; padding: 5px">Points</th>
+                </tr>
+                ${results.map(r => `
+                    <tr style="border-bottom: 1px solid #eee">
+                        <td style="text-align:left; padding: 5px">${r.pseudo}</td>
+                        <td style="text-align:right; padding: 5px">${Math.round(r.distance)} km</td>
+                        <td style="text-align:right; padding: 5px">${r.score}</td>
+                    </tr>
+                `).join('')}
+            </table>
+            <p>Passage à la manche suivante...</p>
+        `;
+    });
+
+    // Le serveur indique quand passer à la manche suivante
+    socket.on('nextRound', (roundIndex) => {
+        document.getElementById('results').style.display = 'none';
+        multiConfig.currentRound = roundIndex;
+        startMultiRound();
+    });
+
+    // Le serveur indique quand la partie est terminée
+    socket.on('endGame', (finalResults) => {
+    // Cacher le pop-up des résultats de la dernière manche
+    document.getElementById('results').style.display = 'none';
+    
+    document.getElementById('game').innerHTML = `
+        <div style="text-align:center; padding: 50px; color: white;">
+            <h2>Partie terminée !</h2>
+            <table style="width:80%; margin:20px auto; color:white; border-collapse:collapse;">
+                <tr style="border-bottom:1px solid white;">
+                    <th style="padding:10px; text-align:left;">Joueur</th>
+                    <th style="padding:10px; text-align:right;">Score</th>
+                </tr>
+                ${finalResults.map(player => `
+                    <tr style="border-bottom:1px solid rgba(255,255,255,0.3);">
+                        <td style="padding:10px; text-align:left;">${player.pseudo}</td>
+                        <td style="padding:10px; text-align:right;">${player.score}</td>
+                    </tr>
+                `).join('')}
+            </table>
+            <button class="btn" onclick="backToMain()">Retour au menu</button>
+        </div>
+    `;
+}); 
+    </script>
+</body>
+</html>
