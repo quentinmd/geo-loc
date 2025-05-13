@@ -15,12 +15,26 @@ const io = socketio(server, {cors: {origin: "*"}});
 const MONGODB_URI = 'mongodb+srv://qmouraud:RWRk4FgMHqpDDvBs@geoloc.oydw5i7.mongodb.net/?retryWrites=true&w=majority&appName=GeoLOCy';
 
 // Connexion à MongoDB
-mongoose.connect(MONGODB_URI, {
-  useNewUrlParser: true,
-  useUnifiedTopology: true
-})
+mongoose.connect(MONGODB_URI)
+  
 .then(() => console.log('MongoDB connecté'))
 .catch(err => console.error('Erreur MongoDB:', err));
+
+// Améliorez la gestion des erreurs de connexion
+mongoose.connection.on('error', (err) => {
+  console.error('Erreur de connexion MongoDB:', err);
+  // Tentative de reconnexion après un délai
+  setTimeout(() => {
+    mongoose.connect(MONGODB_URI);
+  }, 5000);
+});
+
+mongoose.connection.on('disconnected', () => {
+  console.log('MongoDB déconnecté, tentative de reconnexion...');
+  setTimeout(() => {
+    mongoose.connect(MONGODB_URI);
+  }, 5000);
+});
 
 // Créer un modèle pour les statistiques
 const StatsSchema = new mongoose.Schema({
