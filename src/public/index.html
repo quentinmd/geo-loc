@@ -231,6 +231,20 @@
             justify-content: space-between;
         }
 
+        #stats-panel {
+            top: 50px;
+            right: 20px;
+        }
+
+        .stats-item {
+            padding: 8px;
+            margin: 5px 0;
+            background-color: rgba(0,0,0,0.05);
+            border-radius: 5px;
+            display: flex;
+            justify-content: space-between;
+        }
+
         .gold { background-color: rgba(255,215,0,0.2); }
         .silver { background-color: rgba(192,192,192,0.2); }
         .bronze { background-color: rgba(205,127,50,0.2); }
@@ -328,20 +342,17 @@
         <button class="btn" id="submit-btn-multi" onclick="submitGuessMulti()">Valider la position</button>
     </div>
 
-    <!-- Classement des meilleurs joueurs -->
-    <div class="side-panel" id="leaderboard-panel">
-      <h3>Top 10 Joueurs</h3>
-      <div id="leaderboard-list">
-        <div class="loader" style="margin:15px auto;"></div>
-      </div>
+    <!-- Statistiques des joueurs -->
+    <div class="side-panel" id="stats-panel">
+    <h3>Statistiques</h3>
+    <div class="stats-item">
+        <span>Joueurs en ligne:</span>
+        <span id="online-players-count">0</span>
     </div>
-
-    <!-- Joueurs récents -->
-    <div class="side-panel" id="recent-players-panel">
-      <h3>Joueurs récents</h3>
-      <div id="recent-players-list">
-        <div class="loader" style="margin:15px auto;"></div>
-      </div>
+    <div class="stats-item">
+        <span>Total des joueurs:</span>
+        <span id="total-players-count">0</span>
+    </div>
     </div>
 
     <script src="https://maps.googleapis.com/maps/api/js?key=GOOGLE_MAPS_API_KEY_PLACEHOLDER"></script>
@@ -1103,6 +1114,24 @@ document.getElementById('pseudo').addEventListener('change', (e) => {
   if (pseudo && pseudo !== 'Joueur') {
     socket.emit('registerPlayer', pseudo);
   }
+});
+
+// Fonction pour mettre à jour les statistiques des joueurs
+function updatePlayerStats() {
+  socket.emit('getPlayerStats');
+}
+
+// Écouteur pour recevoir les statistiques
+socket.on('playerStats', (stats) => {
+  document.getElementById('online-players-count').textContent = stats.online;
+  document.getElementById('total-players-count').textContent = stats.total;
+});
+
+// Charger les statistiques au démarrage et régulièrement
+window.addEventListener('load', () => {
+  updatePlayerStats();
+  // Mettre à jour les statistiques toutes les 30 secondes
+  setInterval(updatePlayerStats, 30000);
 });
     </script>
 </body>
