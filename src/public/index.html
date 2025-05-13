@@ -1059,49 +1059,6 @@ function loadRecentPlayers() {
   socket.emit('getRecentPlayers');
 }
 
-// Écouteurs pour recevoir les données
-socket.on('leaderboardData', (data) => {
-  const container = document.getElementById('leaderboard-list');
-  if (data.length === 0) {
-    container.innerHTML = '<p>Aucun score enregistré</p>';
-    return;
-  }
-  
-  container.innerHTML = data.map((player, index) => {
-    let className = '';
-    if (index === 0) className = 'gold';
-    else if (index === 1) className = 'silver';
-    else if (index === 2) className = 'bronze';
-    
-    return `
-      <div class="leaderboard-item ${className}">
-        <span>${index + 1}. ${player.pseudo}</span>
-        <span>${player.score}</span>
-      </div>
-    `;
-  }).join('');
-});
-
-socket.on('recentPlayersData', (data) => {
-  const container = document.getElementById('recent-players-list');
-  if (data.length === 0) {
-    container.innerHTML = '<p>Aucun joueur récent</p>';
-    return;
-  }
-  
-  container.innerHTML = data.map(player => {
-    const date = new Date(player.time);
-    const timeStr = `${date.getHours()}:${date.getMinutes().toString().padStart(2, '0')}`;
-    
-    return `
-      <div class="recent-player-item">
-        <span>${player.pseudo}</span>
-        <span>${timeStr}</span>
-      </div>
-    `;
-  }).join('');
-});
-
 // Charger les données au démarrage
 window.addEventListener('load', () => {
   loadLeaderboard();
