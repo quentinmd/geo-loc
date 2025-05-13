@@ -94,6 +94,21 @@ const games = new Map();
 io.on('connection', (socket) => {
   console.log('Nouvelle connexion:', socket.id);
 
+  // Incrémenter le nombre de joueurs connectés
+  onlinePlayers++;
+  totalPlayers++;
+
+  // Sauvegarder les statistiques périodiquement
+  savePlayerStats();
+
+  // Envoyer les statistiques aux clients qui les demandent
+  socket.on('getPlayerStats', () => {
+    socket.emit('playerStats', {
+      online: onlinePlayers,
+      total: totalPlayers
+    });
+  });
+
   socket.on('createGame', (config) => {
     const gameId = generateGameId();
     const player = {
@@ -287,6 +302,15 @@ io.on('connection', (socket) => {
         }
       }
     }
+
+    // Décrémenter lors de la déconnexion
+    onlinePlayers--;
+    
+    // Mettre à jour les stats pour tous les clients
+    io.emit('playerStats', {
+      online: onlinePlayers,
+      total: totalPlayers
+    });
   });
 
   // Envoyer les données de classement
@@ -327,6 +351,29 @@ async function generateLocations(count) {
 
 function generateGameId() {
   return Math.random().toString(36).substr(2, 6).toUpperCase();
+}
+
+// Statistiques des joueurs
+let onlinePlayers = 0;
+let totalPlayers = 0;
+
+// Charger le nombre total de joueurs depuis un fichier si disponible
+try {
+  const statsData = fs.readFileSync(path.join(__dirname, 'player-stats.json'), 'utf8');
+  const stats = JSON.parse(statsData);
+  totalPlayers = stats.total || 0;
+} catch (err) {
+  console.log('Aucune statistique précédente trouvée, démarrage à zéro');
+  totalPlayers = 0;
+}
+
+// Fonction pour sauvegarder les statistiques
+function savePlayerStats() {
+  fs.writeFileSync(
+    path.join(__dirname, 'player-stats.json'),
+    JSON.stringify({ total: totalPlayers }),
+    'utf8'
+  );
 }
 
 const PORT = process.env.PORT || 3000;
