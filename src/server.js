@@ -288,6 +288,28 @@ io.on('connection', (socket) => {
       }
     }
   });
+
+  // Envoyer les données de classement
+  socket.on('getLeaderboard', () => {
+    socket.emit('leaderboardData', leaderboard);
+  });
+
+  // Envoyer les données des joueurs récents
+  socket.on('getRecentPlayers', () => {
+    socket.emit('recentPlayersData', recentPlayers);
+  });
+
+  // Enregistrer le joueur comme récent à la connexion
+  socket.on('registerPlayer', (pseudo) => {
+    if (pseudo) {
+      addRecentPlayer(pseudo);
+    }
+  });
+
+  // Dans le gestionnaire 'endGame' :
+  socket.on('saveScore', (player) => {
+    saveScore(player);
+  });
 });
 
 // Fonction pour générer des lieux (similaire à findValidLocation du client)
