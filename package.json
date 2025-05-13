@@ -4,8 +4,7 @@
   "description": "Clone de GeoGuessr avec mode multijoueur",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js",
-    "dev": "nodemon server.js"
+    "start": "node server.js"
   },
   "dependencies": {
     "express": "^5.1.0",
