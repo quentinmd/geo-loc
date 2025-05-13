@@ -355,7 +355,7 @@ function generateGameId() {
 
 // Statistiques des joueurs
 let onlinePlayers = 0;
-let totalPlayers = 0;
+let totalPlayers = 20;
 
 // Charger le nombre total de joueurs depuis un fichier si disponible
 try {
