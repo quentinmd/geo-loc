@@ -201,6 +201,45 @@
                 font-size: 1em;
             }
         }
+
+        .side-panel {
+            position: absolute;
+            width: 250px;
+            background: rgba(255,255,255,0.95);
+            border-radius: 15px;
+            padding: 15px;
+            box-shadow: 0 0 20px rgba(0,0,0,0.2);
+            z-index: 90;
+        }
+
+        #leaderboard-panel {
+            top: 50px;
+            right: 20px;
+        }
+
+        #recent-players-panel {
+            top: 350px;
+            right: 20px;
+        }
+
+        .leaderboard-item, .recent-player-item {
+            padding: 8px;
+            margin: 5px 0;
+            background-color: rgba(0,0,0,0.05);
+            border-radius: 5px;
+            display: flex;
+            justify-content: space-between;
+        }
+
+        .gold { background-color: rgba(255,215,0,0.2); }
+        .silver { background-color: rgba(192,192,192,0.2); }
+        .bronze { background-color: rgba(205,127,50,0.2); }
+
+        @media (max-width: 700px) {
+            .side-panel {
+                display: none; /* Masquer sur mobile */
+            }
+        }
     </style>
 </head>
 <body>
@@ -287,6 +326,22 @@
         </div>
         <div id="timer-multi">40s</div>
         <button class="btn" id="submit-btn-multi" onclick="submitGuessMulti()">Valider la position</button>
+    </div>
+
+    <!-- Classement des meilleurs joueurs -->
+    <div class="side-panel" id="leaderboard-panel">
+      <h3>Top 10 Joueurs</h3>
+      <div id="leaderboard-list">
+        <div class="loader" style="margin:15px auto;"></div>
+      </div>
+    </div>
+
+    <!-- Joueurs récents -->
+    <div class="side-panel" id="recent-players-panel">
+      <h3>Joueurs récents</h3>
+      <div id="recent-players-list">
+        <div class="loader" style="margin:15px auto;"></div>
+      </div>
     </div>
 
     <script src="https://maps.googleapis.com/maps/api/js?key=GOOGLE_MAPS_API_KEY_PLACEHOLDER"></script>
@@ -521,6 +576,13 @@
         }
 
         function endGame() {
+            // Sauvegarder le score
+            socket.emit('saveScore', {
+                pseudo: gameConfig.pseudo,
+                score: gameConfig.score
+            });
+            
+            // Code existant pour afficher l'écran de fin
             document.getElementById('game-container').innerHTML = `
                 <div style="text-align:center; padding: 50px; color: white;">
                     <h2>Partie terminée !</h2>
@@ -976,6 +1038,72 @@ socket.on('requestLocations', async (gameId, roundCount) => {
         </div>
     `;
 }); 
+
+// Chargement du classement et des joueurs récents
+function loadLeaderboard() {
+  socket.emit('getLeaderboard');
+}
+
+function loadRecentPlayers() {
+  socket.emit('getRecentPlayers');
+}
+
+// Écouteurs pour recevoir les données
+socket.on('leaderboardData', (data) => {
+  const container = document.getElementById('leaderboard-list');
+  if (data.length === 0) {
+    container.innerHTML = '<p>Aucun score enregistré</p>';
+    return;
+  }
+  
+  container.innerHTML = data.map((player, index) => {
+    let className = '';
+    if (index === 0) className = 'gold';
+    else if (index === 1) className = 'silver';
+    else if (index === 2) className = 'bronze';
+    
+    return `
+      <div class="leaderboard-item ${className}">
+        <span>${index + 1}. ${player.pseudo}</span>
+        <span>${player.score}</span>
+      </div>
+    `;
+  }).join('');
+});
+
+socket.on('recentPlayersData', (data) => {
+  const container = document.getElementById('recent-players-list');
+  if (data.length === 0) {
+    container.innerHTML = '<p>Aucun joueur récent</p>';
+    return;
+  }
+  
+  container.innerHTML = data.map(player => {
+    const date = new Date(player.time);
+    const timeStr = `${date.getHours()}:${date.getMinutes().toString().padStart(2, '0')}`;
+    
+    return `
+      <div class="recent-player-item">
+        <span>${player.pseudo}</span>
+        <span>${timeStr}</span>
+      </div>
+    `;
+  }).join('');
+});
+
+// Charger les données au démarrage
+window.addEventListener('load', () => {
+  loadLeaderboard();
+  loadRecentPlayers();
+});
+
+// Enregistrer le joueur quand il saisit son pseudo
+document.getElementById('pseudo').addEventListener('change', (e) => {
+  const pseudo = e.target.value;
+  if (pseudo && pseudo !== 'Joueur') {
+    socket.emit('registerPlayer', pseudo);
+  }
+});
     </script>
 </body>
 </html>
