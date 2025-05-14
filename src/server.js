@@ -46,6 +46,16 @@ const StatsSchema = new mongoose.Schema({
 
 const Stats = mongoose.model('Stats', StatsSchema);
 
+// Historique des statistiques pour MongoDB
+const StatsHistorySchema = new mongoose.Schema({
+  timestamp: { type: Date, default: Date.now },
+  online: { type: Number, default: 0 },
+  averageScore: { type: Number, default: 0 },
+  activeGames: { type: Number, default: 0 }
+});
+
+const StatsHistory = mongoose.model('StatsHistory', StatsHistorySchema);
+
 // Remplacer vos variables de statistiques par ceci
 let onlinePlayers = 0;
 let totalPlayers = 0;
@@ -80,6 +90,13 @@ const leaderboard = [];
 const recentPlayers = [];
 const MAX_LEADERBOARD_SIZE = 10;
 const MAX_RECENT_PLAYERS = 5;
+
+// Historique des joueurs en ligne pour le calcul de tendances
+const playersHistory = {
+  timestamps: [],
+  counts: [],
+  maxEntries: 24 // Garder 24 entrées (pour suivre les dernières 24h avec une mesure/heure)
+};
 
 // Fonction pour sauvegarder un score dans le classement
 function saveScore(player) {
@@ -542,6 +559,77 @@ async function savePlayerStats() {
   }
 }
 
+// Fonction pour calculer le score moyen (améliorée)
+function calculateAverageScore() {
+  // Si nous avons des scores dans le leaderboard
+  if (leaderboard.length > 0) {
+    const sum = leaderboard.reduce((total, player) => total + player.score, 0);
+    return Math.round(sum / leaderboard.length);
+  }
+  
+  // Si nous avons des parties actives, calculer la moyenne des scores en cours
+  let activePlayers = 0;
+  let activeScoresSum = 0;
+  
+  games.forEach(game => {
+    game.players.forEach(player => {
+      activePlayers++;
+      activeScoresSum += player.score || 0;
+    });
+  });
+  
+  if (activePlayers > 0) {
+    return Math.round(activeScoresSum / activePlayers);
+  }
+  
+  return 0; // Pas de scores disponibles
+}
+
+// Fonction pour calculer la tendance d'activité
+function calculateOnlineTrend() {
+  const now = Date.now();
+  
+  // Ajouter le nombre actuel à l'historique
+  playersHistory.timestamps.push(now);
+  playersHistory.counts.push(onlinePlayers);
+  
+  // Ne garder que les X dernières entrées
+  if (playersHistory.timestamps.length > playersHistory.maxEntries) {
+    playersHistory.timestamps.shift();
+    playersHistory.counts.shift();
+  }
+  
+  // Si nous avons suffisamment d'historique pour calculer une tendance (au moins 2 points)
+  if (playersHistory.counts.length >= 2) {
+    // Comparer avec la valeur d'il y a 1 heure (ou la plus ancienne disponible)
+    const current = onlinePlayers;
+    const previous = playersHistory.counts[0];
+    
+    return current - previous;
+  }
+  
+  return 0; // Pas assez de données
+}
+
+// Mettre à jour l'historique des joueurs toutes les heures
+setInterval(() => {
+  calculateOnlineTrend(); // Cette fonction met à jour l'historique
+}, 3600000); // 3600000 ms = 1 heure
+
+// Enregistrer l'historique des statistiques toutes les heures
+setInterval(async () => {
+  try {
+    await StatsHistory.create({
+      timestamp: new Date(),
+      online: onlinePlayers,
+      averageScore: calculateAverageScore(),
+      activeGames: games.size
+    });
+    console.log('Historique des statistiques enregistré');
+  } catch (err) {
+    console.error('Erreur lors de l\'enregistrement de l\'historique:', err);
+  }
+}, 3600000); // 3600000 ms = 1 heure
 
 app.get('/admin', (req, res) => {
   const password = req.query.key;
