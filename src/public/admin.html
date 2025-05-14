@@ -630,19 +630,20 @@
         // Fonction pour actualiser la liste des parties
         function refreshGames() {
             socket.emit('getActiveGames');
+            document.getElementById('games-list').innerHTML = '<tr><td colspan="6">Chargement des données...</td></tr>';
         }
-        
+
         // Initialisation des graphiques
         function initCharts() {
             // Graphique d'activité
             const activityCtx = document.getElementById('activity-chart').getContext('2d');
-            const activityChart = new Chart(activityCtx, {
+            window.activityChart = new Chart(activityCtx, {
                 type: 'line',
                 data: {
                     labels: Array.from({length: 24}, (_, i) => `${23-i}h`).reverse(),
                     datasets: [{
                         label: 'Connexions',
-                        data: Array.from({length: 24}, () => Math.floor(Math.random() * 10)),
+                        data: [], // On laisse vide pour l'instant, sera rempli par getActivityData()
                         borderColor: '#40916c',
                         backgroundColor: 'rgba(64, 145, 108, 0.2)',
                         tension: 0.3,
@@ -662,75 +663,25 @@
                 }
             });
             
-            // Distribution des scores
-            const scoresCtx = document.getElementById('scores-distribution-chart').getContext('2d');
-            const scoresChart = new Chart(scoresCtx, {
-                type: 'bar',
-                data: {
-                    labels: ['0-500', '500-1000', '1000-1500', '1500-2000', '2000-2500', '2500-3000', '3000-3500', '3500-4000', '4000-4500', '4500-5000'],
-                    datasets: [{
-                        label: 'Fréquence',
-                        data: [15, 22, 18, 25, 30, 28, 20, 15, 8, 5],
-                        backgroundColor: 'rgba(64, 145, 108, 0.7)'
-                    }]
-                },
-                options: {
-                    responsive: true,
-                    scales: {
-                        y: {
-                            beginAtZero: true
-                        }
-                    }
-                }
-            });
-            
-            // Activité par jour
-            const dailyCtx = document.getElementById('daily-activity-chart').getContext('2d');
-            const dailyChart = new Chart(dailyCtx, {
-                type: 'bar',
-                data: {
-                    labels: ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim'],
-                    datasets: [{
-                        label: 'Parties jouées',
-                        data: [25, 30, 28, 35, 42, 65, 70],
-                        backgroundColor: 'rgba(64, 145, 108, 0.7)'
-                    }]
-                },
-                options: {
-                    responsive: true,
-                    scales: {
-                        y: {
-                            beginAtZero: true
-                        }
-                    }
-                }
-            });
-            
-            // Temps moyen par partie
-            const timeCtx = document.getElementById('avg-time-chart').getContext('2d');
-            const timeChart = new Chart(timeCtx, {
-                type: 'line',
-                data: {
-                    labels: ['3 manches', '5 manches', '10 manches'],
-                    datasets: [{
-                        label: 'Temps moyen (minutes)',
-                        data: [3.5, 5.8, 12.2],
-                        borderColor: '#40916c',
-                        backgroundColor: 'rgba(64, 145, 108, 0.2)',
-                        tension: 0.3,
-                        fill: true
-                    }]
-                },
-                options: {
-                    responsive: true,
-                    scales: {
-                        y: {
-                            beginAtZero: true
-                        }
-                    }
-                }
-            });
+            // Autres graphiques...
         }
+
+        // Ajoutez cette nouvelle fonction pour récupérer les données d'activité
+        function getActivityData() {
+            socket.emit('getActivityHistory');
+        }
+
+        // Écouteur d'événement pour recevoir les données d'activité
+        socket.on('activityHistory', (data) => {
+            // Mettre à jour le graphique avec les données réelles
+            if (window.activityChart && data && data.counts && data.timestamps) {
+                window.activityChart.data.labels = data.timestamps.map(ts => 
+                    new Date(ts).toLocaleTimeString([], {hour: '2-digit'})
+                );
+                window.activityChart.data.datasets[0].data = data.counts;
+                window.activityChart.update();
+            }
+        });
         
         // Écouteurs d'événements Socket.io pour l'admin
         socket.on('connect', () => {
@@ -805,10 +756,8 @@
             const tableBody = document.getElementById('games-list');
             tableBody.innerHTML = '';
             
-            if (games.length === 0) {
-                const row = document.createElement('tr');
-                row.innerHTML = '<td colspan="6">Aucune partie en cours</td>';
-                tableBody.appendChild(row);
+            if (!games || games.length === 0) {
+                tableBody.innerHTML = '<tr><td colspan="6">Aucune partie en cours</td></tr>';
                 return;
             }
             
@@ -907,6 +856,53 @@
                     refreshPlayers();
                 }
             }, 30000);
+
+            getActivityData(); // Charger les données d'activité immédiatement
+            refreshGames();    // Charger les parties en cours
+            socket.emit('getDetailedStats'); // Nouveau événement pour les statistiques détaillées
+        });
+
+        // Dans document.addEventListener('DOMContentLoaded', () => {...})
+        setInterval(() => {
+            refreshData();
+            getActivityData();
+        }, 30000); // 30 secondes
+
+        setInterval(() => {
+            refreshGames();
+            socket.emit('getDetailedStats');
+        }, 60000); // 1 minute
+
+        // Ajouter un nouvel écouteur d'événement pour les statistiques détaillées
+        socket.on('detailedStats', (data) => {
+            // Mettre à jour le graphique de distribution des scores
+            if (window.scoresChart && data.scoreDistribution) {
+                window.scoresChart.data.datasets[0].data = data.scoreDistribution;
+                window.scoresChart.update();
+            }
+            
+            // Mettre à jour le graphique d'activité par jour
+            if (window.dailyChart && data.dailyActivity) {
+                window.dailyChart.data.datasets[0].data = data.dailyActivity;
+                window.dailyChart.update();
+            }
+            
+            // Mettre à jour le tableau des destinations difficiles
+            if (data.difficultLocations) {
+                const tableBody = document.getElementById('difficult-locations');
+                tableBody.innerHTML = '';
+                
+                data.difficultLocations.forEach(location => {
+                    const row = document.createElement('tr');
+                    row.innerHTML = `
+                        <td>${location.lat.toFixed(5)}, ${location.lng.toFixed(5)}</td>
+                        <td>${location.avgScore}</td>
+                        <td>${location.games}</td>
+                        <td>${location.avgDistance.toFixed(2)} km</td>
+                    `;
+                    tableBody.appendChild(row);
+                });
+            }
         });
     </script>
 </body>
