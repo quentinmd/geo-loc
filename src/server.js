@@ -747,42 +747,6 @@ function refreshGameHistory() {
   document.getElementById('game-history').innerHTML = '<tr><td colspan="6">Chargement de l\'historique...</td></tr>';
 }
 
-socket.on('gameHistory', (history) => {
-  const tableBody = document.getElementById('game-history');
-  tableBody.innerHTML = '';
-  
-  if (!history || history.length === 0) {
-    tableBody.innerHTML = '<tr><td colspan="6">Aucune partie dans l\'historique</td></tr>';
-    return;
-  }
-  
-  history.forEach(game => {
-    const startDate = new Date(game.startTime);
-    const endDate = new Date(game.endTime);
-    const duration = Math.round((endDate - startDate) / 60000); // en minutes
-    
-    // Trouver le meilleur score
-    let bestScore = 0;
-    let bestPlayer = '';
-    
-    if (game.players && game.players.length > 0) {
-      bestScore = game.players[0].score;
-      bestPlayer = game.players[0].pseudo;
-    }
-    
-    const row = document.createElement('tr');
-    row.innerHTML = `
-      <td>${game.gameId}</td>
-      <td>${startDate.toLocaleString()}</td>
-      <td>${duration} min</td>
-      <td>${game.players ? game.players.length : 0}</td>
-      <td>${game.rounds}</td>
-      <td>${bestPlayer}: ${bestScore} pts</td>
-    `;
-    tableBody.appendChild(row);
-  });
-});
-
 // Appeler au chargement de la page
 document.addEventListener('DOMContentLoaded', () => {
   // ... autres initialisations ...
