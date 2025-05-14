@@ -522,6 +522,44 @@ io.on('connection', (socket) => {
     console.log('Nouveaux paramètres:', settings);
     // Ici, vous pourriez mettre à jour des variables globales ou une config
   });
+
+  socket.on('getActivityHistory', () => {
+    if (!socket.rooms.has('admin-room')) return;
+    
+    socket.emit('activityHistory', {
+        timestamps: playersHistory.timestamps,
+        counts: playersHistory.counts
+    });
+  });
+
+  // Dans votre fichier server.js, ajoutez ce gestionnaire d'événement
+  socket.on('getDetailedStats', () => {
+    if (!socket.rooms.has('admin-room')) return;
+    
+    // Création de données de distribution de scores basées sur les scores réels
+    const scoreDistribution = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]; // 10 catégories
+    
+    leaderboard.forEach(player => {
+        const score = player.score;
+        const index = Math.min(9, Math.floor(score / 500)); // 0-500, 500-1000, etc.
+        if (index >= 0 && index < 10) {
+            scoreDistribution[index]++;
+        }
+    });
+    
+    // Activité quotidienne (à partir de StatsHistory)
+    const dailyActivity = [0, 0, 0, 0, 0, 0, 0]; // Pour les 7 derniers jours
+    
+    // Recueillir les données des destinations difficiles
+    const difficultLocations = [];
+    
+    // Collecting real data would require additional tracking, but here's what we've tracked:
+    socket.emit('detailedStats', {
+        scoreDistribution,
+        dailyActivity,
+        difficultLocations
+    });
+  });
 });
 
 // Fonction pour générer des lieux (similaire à findValidLocation du client)
