@@ -543,7 +543,7 @@ async function savePlayerStats() {
 }
 
 // Liste des IPs autorisées (ajoutez votre propre IP)
-const allowedIPs = ['127.0.0.1', '192.168.0.38'];
+const allowedIPs = ['127.0.0.1', '88.122.211.68'];
 
 app.get('/admin', (req, res) => {
   const password = req.query.key;
