@@ -542,14 +542,27 @@ async function savePlayerStats() {
   }
 }
 
-// Dans votre server.js, ajoutez ces routes
+// Liste des IPs autorisées (ajoutez votre propre IP)
+const allowedIPs = ['127.0.0.1', '192.168.0.38'];
+
 app.get('/admin', (req, res) => {
   const password = req.query.key;
-  // Mot de passe stocké dans les variables d'environnement
-  if (password === process.env.ADMIN_PASSWORD) {
+  const adminPassword = 'QUENTIN44';
+  
+  // Vérifier l'IP du client
+  const clientIP = req.ip.replace(/^::ffff:/, ''); // Convertir IPv6 à IPv4 si nécessaire
+  const isAllowedIP = allowedIPs.includes(clientIP);
+  
+  if (!isAllowedIP) {
+    console.log(`Tentative d'accès à l'admin depuis une IP non autorisée: ${clientIP}`);
+    return res.status(403).send('<h1>Accès refusé</h1>');
+  }
+  
+  // Vérifier le mot de passe
+  if (password === adminPassword) {
     res.sendFile(path.join(__dirname, 'public', 'admin.html'));
   } else {
-    res.status(403).send('<h1>Accès refusé</h1><p>Vous n\'avez pas l\'autorisation d\'accéder à cette page.</p>');
+    res.status(403).send('<h1>Accès refusé</h1><p>Mot de passe incorrect</p>');
   }
 });
 
