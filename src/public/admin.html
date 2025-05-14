@@ -1,0 +1,913 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Administration - GeoGuessr Clone</title>
+    <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        :root {
+            --primary: #40916c;
+            --primary-dark: #2d6a4f;
+            --bg-dark: #222;
+            --bg-light: #f9f9f9;
+            --card-bg: #fff;
+            --danger: #e63946;
+            --warning: #ffb703;
+            --success: #52b788;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: var(--bg-light);
+            color: #333;
+        }
+        
+        .dashboard {
+            display: grid;
+            grid-template-columns: 220px 1fr;
+            min-height: 100vh;
+        }
+        
+        /* Sidebar */
+        .sidebar {
+            background-color: var(--primary-dark);
+            color: white;
+            padding: 20px 0;
+        }
+        
+        .sidebar-header {
+            padding: 0 20px;
+            margin-bottom: 30px;
+        }
+        
+        .sidebar-header h2 {
+            margin: 0;
+            font-size: 1.5em;
+        }
+        
+        .sidebar-nav {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+        }
+        
+        .sidebar-nav li a {
+            display: block;
+            padding: 15px 20px;
+            color: rgba(255,255,255,0.8);
+            text-decoration: none;
+            transition: all 0.3s ease;
+            border-left: 4px solid transparent;
+        }
+        
+        .sidebar-nav li a:hover, .sidebar-nav li a.active {
+            background-color: rgba(255,255,255,0.1);
+            color: white;
+            border-left-color: white;
+        }
+        
+        .sidebar-nav li a i {
+            margin-right: 10px;
+        }
+        
+        /* Main Content */
+        .main-content {
+            padding: 30px;
+            overflow-y: auto;
+        }
+        
+        .page-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 30px;
+            border-bottom: 1px solid #ddd;
+            padding-bottom: 15px;
+        }
+        
+        .stats-cards {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+        
+        .card {
+            background-color: var(--card-bg);
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+            padding: 20px;
+        }
+        
+        .stat-card {
+            text-align: center;
+        }
+        
+        .stat-card .number {
+            font-size: 2.5em;
+            font-weight: bold;
+            color: var(--primary);
+            margin: 10px 0;
+        }
+        
+        .stat-card .label {
+            color: #777;
+            font-size: 0.9em;
+        }
+        
+        .chart-container {
+            background-color: var(--card-bg);
+            border-radius: 8px;
+            padding: 20px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+            margin-bottom: 30px;
+        }
+        
+        .chart-container h3 {
+            margin-top: 0;
+            color: #555;
+            border-bottom: 1px solid #eee;
+            padding-bottom: 10px;
+        }
+        
+        /* Tables */
+        .data-table {
+            width: 100%;
+            border-collapse: collapse;
+            background-color: var(--card-bg);
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+        }
+        
+        .data-table th, .data-table td {
+            padding: 12px 15px;
+            border-bottom: 1px solid #eee;
+        }
+        
+        .data-table th {
+            background-color: #f5f5f5;
+            font-weight: 600;
+            color: #555;
+            text-align: left;
+        }
+        
+        .data-table tr:last-child td {
+            border-bottom: none;
+        }
+        
+        .data-table tr:hover {
+            background-color: #f9f9f9;
+        }
+        
+        .btn {
+            background-color: var(--primary);
+            color: white;
+            border: none;
+            padding: 8px 15px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.9em;
+            transition: background-color 0.3s ease;
+        }
+        
+        .btn:hover {
+            background-color: var(--primary-dark);
+        }
+        
+        .btn-danger {
+            background-color: var(--danger);
+        }
+        
+        .btn-danger:hover {
+            background-color: #c1121f;
+        }
+        
+        .refresh-bar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+        
+        .auto-refresh {
+            display: flex;
+            align-items: center;
+        }
+        
+        .auto-refresh input {
+            margin-right: 5px;
+        }
+        
+        .tab-container {
+            margin-bottom: 30px;
+        }
+        
+        .tabs {
+            display: flex;
+            background-color: var(--card-bg);
+            border-radius: 8px 8px 0 0;
+            overflow: hidden;
+        }
+        
+        .tab {
+            padding: 12px 20px;
+            cursor: pointer;
+            border-bottom: 2px solid transparent;
+            transition: all 0.3s ease;
+        }
+        
+        .tab.active {
+            border-bottom-color: var(--primary);
+            color: var(--primary);
+            font-weight: 600;
+        }
+        
+        .tab-content {
+            background-color: var(--card-bg);
+            padding: 20px;
+            border-radius: 0 0 8px 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+        }
+        
+        .status-badge {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 12px;
+            font-size: 0.8em;
+        }
+        
+        .status-active {
+            background-color: rgba(82, 183, 136, 0.2);
+            color: var(--success);
+        }
+        
+        .status-inactive {
+            background-color: rgba(153, 153, 153, 0.2);
+            color: #777;
+        }
+        
+        /* Section spécifique */
+        .section {
+            display: none;
+        }
+        
+        .section.active {
+            display: block;
+        }
+        
+        /* Animations */
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+        
+        .section.active {
+            animation: fadeIn 0.5s ease;
+        }
+        
+        /* Responsive */
+        @media (max-width: 768px) {
+            .dashboard {
+                grid-template-columns: 1fr;
+            }
+            
+            .sidebar {
+                display: none;
+                position: fixed;
+                width: 100%;
+                height: 100%;
+                z-index: 100;
+            }
+            
+            .mobile-menu-toggle {
+                display: block;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="dashboard">
+        <div class="sidebar">
+            <div class="sidebar-header">
+                <h2>GeoGuessr Admin</h2>
+                <p id="server-status">Serveur actif</p>
+            </div>
+            <ul class="sidebar-nav">
+                <li><a href="#dashboard" class="active" onclick="showSection('dashboard')"><i>📊</i> Tableau de bord</a></li>
+                <li><a href="#players" onclick="showSection('players')"><i>👥</i> Joueurs</a></li>
+                <li><a href="#games" onclick="showSection('games')"><i>🎮</i> Parties</a></li>
+                <li><a href="#stats" onclick="showSection('stats')"><i>📈</i> Statistiques</a></li>
+                <li><a href="#settings" onclick="showSection('settings')"><i>⚙️</i> Paramètres</a></li>
+            </ul>
+        </div>
+        
+        <div class="main-content">
+            <!-- Dashboard Section -->
+            <section id="dashboard-section" class="section active">
+                <div class="page-header">
+                    <h1>Tableau de bord</h1>
+                    <div>
+                        <span id="last-update">Dernière mise à jour: --:--:--</span>
+                        <button class="btn" onclick="refreshData()">Actualiser</button>
+                    </div>
+                </div>
+                
+                <div class="stats-cards">
+                    <div class="card stat-card">
+                        <div class="label">Joueurs en ligne</div>
+                        <div id="online-count" class="number">-</div>
+                        <div id="online-trend" class="trend">Chargement...</div>
+                    </div>
+                    
+                    <div class="card stat-card">
+                        <div class="label">Total des joueurs</div>
+                        <div id="total-count" class="number">-</div>
+                        <div class="trend">Tous les temps</div>
+                    </div>
+                    
+                    <div class="card stat-card">
+                        <div class="label">Parties en cours</div>
+                        <div id="games-count" class="number">-</div>
+                        <div class="trend">Chargement...</div>
+                    </div>
+                    
+                    <div class="card stat-card">
+                        <div class="label">Score moyen</div>
+                        <div id="avg-score" class="number">-</div>
+                        <div class="trend">Toutes parties</div>
+                    </div>
+                </div>
+                
+                <div class="chart-container">
+                    <h3>Activité des dernières 24 heures</h3>
+                    <canvas id="activity-chart"></canvas>
+                </div>
+                
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+                    <div class="card">
+                        <h3>Parties récentes</h3>
+                        <table class="data-table" id="recent-games">
+                            <thead>
+                                <tr>
+                                    <th>Type</th>
+                                    <th>Joueurs</th>
+                                    <th>Manches</th>
+                                    <th>Heure</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr><td colspan="4">Chargement des données...</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                    
+                    <div class="card">
+                        <h3>Meilleurs scores</h3>
+                        <table class="data-table" id="top-scores">
+                            <thead>
+                                <tr>
+                                    <th>Joueur</th>
+                                    <th>Score</th>
+                                    <th>Date</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr><td colspan="3">Chargement des données...</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
+            
+            <!-- Players Section -->
+            <section id="players-section" class="section">
+                <div class="page-header">
+                    <h1>Joueurs connectés</h1>
+                    <button class="btn" onclick="refreshPlayers()">Actualiser</button>
+                </div>
+                
+                <div class="refresh-bar">
+                    <div class="auto-refresh">
+                        <input type="checkbox" id="auto-refresh-players">
+                        <label for="auto-refresh-players">Actualisation automatique (30s)</label>
+                    </div>
+                    <div>
+                        <input type="text" id="player-search" placeholder="Rechercher un joueur">
+                    </div>
+                </div>
+                
+                <table class="data-table" id="players-table">
+                    <thead>
+                        <tr>
+                            <th>Pseudo</th>
+                            <th>Statut</th>
+                            <th>Connecté depuis</th>
+                            <th>IP (masquée)</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="players-list">
+                        <tr><td colspan="5">Chargement des données...</td></tr>
+                    </tbody>
+                </table>
+            </section>
+            
+            <!-- Games Section -->
+            <section id="games-section" class="section">
+                <div class="page-header">
+                    <h1>Parties en cours</h1>
+                    <button class="btn" onclick="refreshGames()">Actualiser</button>
+                </div>
+                
+                <div class="tab-container">
+                    <div class="tabs">
+                        <div class="tab active" onclick="switchTab(this, 'active-games')">Parties en cours</div>
+                        <div class="tab" onclick="switchTab(this, 'game-history')">Historique des parties</div>
+                    </div>
+                    
+                    <div class="tab-content active" id="active-games-content">
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>ID</th>
+                                    <th>Type</th>
+                                    <th>Joueurs</th>
+                                    <th>Progression</th>
+                                    <th>Durée</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="games-list">
+                                <tr><td colspan="6">Chargement des données...</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                    
+                    <div class="tab-content" id="game-history-content">
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>Date</th>
+                                    <th>Type</th>
+                                    <th>Joueurs</th>
+                                    <th>Manches</th>
+                                    <th>Score max</th>
+                                </tr>
+                            </thead>
+                            <tbody id="game-history-list">
+                                <tr><td colspan="5">Chargement des données...</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
+            
+            <!-- Stats Section -->
+            <section id="stats-section" class="section">
+                <div class="page-header">
+                    <h1>Statistiques détaillées</h1>
+                </div>
+                
+                <div class="chart-container">
+                    <h3>Distribution des scores</h3>
+                    <canvas id="scores-distribution-chart"></canvas>
+                </div>
+                
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 30px;">
+                    <div class="chart-container">
+                        <h3>Activité par jour</h3>
+                        <canvas id="daily-activity-chart"></canvas>
+                    </div>
+                    
+                    <div class="chart-container">
+                        <h3>Temps de partie moyen</h3>
+                        <canvas id="avg-time-chart"></canvas>
+                    </div>
+                </div>
+                
+                <div class="card">
+                    <h3>Destinations les plus difficiles</h3>
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>Position</th>
+                                <th>Score moyen</th>
+                                <th>Nombre de parties</th>
+                                <th>Distance moyenne</th>
+                            </tr>
+                        </thead>
+                        <tbody id="difficult-locations">
+                            <tr><td colspan="4">Chargement des données...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+            
+            <!-- Settings Section -->
+            <section id="settings-section" class="section">
+                <div class="page-header">
+                    <h1>Paramètres du serveur</h1>
+                </div>
+                
+                <div class="card">
+                    <h3>Informations système</h3>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 20px;">
+                        <div>
+                            <p><strong>Version du serveur:</strong> <span id="server-version">-</span></p>
+                            <p><strong>Temps de fonctionnement:</strong> <span id="uptime">-</span></p>
+                            <p><strong>Utilisation mémoire:</strong> <span id="memory-usage">-</span></p>
+                        </div>
+                        <div>
+                            <p><strong>CPU:</strong> <span id="cpu-usage">-</span></p>
+                            <p><strong>Espace disque:</strong> <span id="disk-usage">-</span></p>
+                            <p><strong>Node.js version:</strong> <span id="nodejs-version">-</span></p>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="card" style="margin-top: 20px;">
+                    <h3>Actions administrateur</h3>
+                    <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                        <button class="btn" onclick="confirmAction('Êtes-vous sûr de vouloir vider le cache du serveur?')">Vider le cache</button>
+                        <button class="btn" onclick="confirmAction('Êtes-vous sûr de vouloir redémarrer le serveur?')">Redémarrer le serveur</button>
+                        <button class="btn btn-danger" onclick="confirmAction('ATTENTION: Cette action réinitialisera toutes les statistiques. Continuer?')">Réinitialiser les statistiques</button>
+                    </div>
+                </div>
+                
+                <div class="card" style="margin-top: 20px;">
+                    <h3>Configuration</h3>
+                    <form id="settings-form">
+                        <div style="margin-bottom: 15px;">
+                            <label>Temps maximum par partie (secondes):</label>
+                            <input type="number" id="max-game-time" value="40" min="10" max="120">
+                        </div>
+                        
+                        <div style="margin-bottom: 15px;">
+                            <label>Nombre maximum de joueurs par partie:</label>
+                            <input type="number" id="max-players" value="10" min="2" max="20">
+                        </div>
+                        
+                        <div style="margin-bottom: 15px;">
+                            <input type="checkbox" id="log-all-events">
+                            <label for="log-all-events">Enregistrer tous les événements</label>
+                        </div>
+                        
+                        <button type="button" class="btn" onclick="saveSettings()">Enregistrer</button>
+                    </form>
+                </div>
+            </section>
+        </div>
+    </div>
+    
+    <script>
+        const socket = io(window.location.hostname === 'localhost' ? 'http://localhost:3000' : '/');
+        
+        // Fonction pour afficher une section spécifique
+        function showSection(sectionId) {
+            document.querySelectorAll('.section').forEach(section => {
+                section.classList.remove('active');
+            });
+            document.querySelectorAll('.sidebar-nav a').forEach(link => {
+                link.classList.remove('active');
+            });
+            
+            document.getElementById(`${sectionId}-section`).classList.add('active');
+            document.querySelector(`.sidebar-nav a[href="#${sectionId}"]`).classList.add('active');
+        }
+        
+        // Fonction pour changer d'onglet
+        function switchTab(tab, contentId) {
+            // Désactiver tous les onglets
+            tab.parentElement.querySelectorAll('.tab').forEach(t => {
+                t.classList.remove('active');
+            });
+            
+            // Désactiver tous les contenus d'onglet
+            document.querySelectorAll('.tab-content').forEach(content => {
+                content.classList.remove('active');
+            });
+            
+            // Activer l'onglet sélectionné
+            tab.classList.add('active');
+            document.getElementById(`${contentId}-content`).classList.add('active');
+        }
+        
+        // Fonction pour confirmer une action
+        function confirmAction(message) {
+            if (confirm(message)) {
+                alert('Action en cours... Cette fonctionnalité nécessite une implémentation spécifique sur le serveur.');
+            }
+        }
+        
+        // Fonction pour enregistrer les paramètres
+        function saveSettings() {
+            const settings = {
+                maxGameTime: document.getElementById('max-game-time').value,
+                maxPlayers: document.getElementById('max-players').value,
+                logAllEvents: document.getElementById('log-all-events').checked
+            };
+            
+            socket.emit('updateSettings', settings);
+            alert('Paramètres enregistrés');
+        }
+        
+        // Fonction pour actualiser les données du tableau de bord
+        function refreshData() {
+            socket.emit('getAdminData');
+            document.getElementById('last-update').textContent = `Dernière mise à jour: ${new Date().toLocaleTimeString()}`;
+        }
+        
+        // Fonction pour actualiser la liste des joueurs
+        function refreshPlayers() {
+            socket.emit('getConnectedPlayers');
+        }
+        
+        // Fonction pour actualiser la liste des parties
+        function refreshGames() {
+            socket.emit('getActiveGames');
+        }
+        
+        // Initialisation des graphiques
+        function initCharts() {
+            // Graphique d'activité
+            const activityCtx = document.getElementById('activity-chart').getContext('2d');
+            const activityChart = new Chart(activityCtx, {
+                type: 'line',
+                data: {
+                    labels: Array.from({length: 24}, (_, i) => `${23-i}h`).reverse(),
+                    datasets: [{
+                        label: 'Connexions',
+                        data: Array.from({length: 24}, () => Math.floor(Math.random() * 10)),
+                        borderColor: '#40916c',
+                        backgroundColor: 'rgba(64, 145, 108, 0.2)',
+                        tension: 0.3,
+                        fill: true
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            ticks: {
+                                precision: 0
+                            }
+                        }
+                    }
+                }
+            });
+            
+            // Distribution des scores
+            const scoresCtx = document.getElementById('scores-distribution-chart').getContext('2d');
+            const scoresChart = new Chart(scoresCtx, {
+                type: 'bar',
+                data: {
+                    labels: ['0-500', '500-1000', '1000-1500', '1500-2000', '2000-2500', '2500-3000', '3000-3500', '3500-4000', '4000-4500', '4500-5000'],
+                    datasets: [{
+                        label: 'Fréquence',
+                        data: [15, 22, 18, 25, 30, 28, 20, 15, 8, 5],
+                        backgroundColor: 'rgba(64, 145, 108, 0.7)'
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    scales: {
+                        y: {
+                            beginAtZero: true
+                        }
+                    }
+                }
+            });
+            
+            // Activité par jour
+            const dailyCtx = document.getElementById('daily-activity-chart').getContext('2d');
+            const dailyChart = new Chart(dailyCtx, {
+                type: 'bar',
+                data: {
+                    labels: ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim'],
+                    datasets: [{
+                        label: 'Parties jouées',
+                        data: [25, 30, 28, 35, 42, 65, 70],
+                        backgroundColor: 'rgba(64, 145, 108, 0.7)'
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    scales: {
+                        y: {
+                            beginAtZero: true
+                        }
+                    }
+                }
+            });
+            
+            // Temps moyen par partie
+            const timeCtx = document.getElementById('avg-time-chart').getContext('2d');
+            const timeChart = new Chart(timeCtx, {
+                type: 'line',
+                data: {
+                    labels: ['3 manches', '5 manches', '10 manches'],
+                    datasets: [{
+                        label: 'Temps moyen (minutes)',
+                        data: [3.5, 5.8, 12.2],
+                        borderColor: '#40916c',
+                        backgroundColor: 'rgba(64, 145, 108, 0.2)',
+                        tension: 0.3,
+                        fill: true
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    scales: {
+                        y: {
+                            beginAtZero: true
+                        }
+                    }
+                }
+            });
+        }
+        
+        // Écouteurs d'événements Socket.io pour l'admin
+        socket.on('connect', () => {
+            console.log('Connecté au serveur d\'administration');
+            socket.emit('adminAuth'); // S'authentifier comme admin
+            refreshData();
+        });
+        
+        socket.on('adminData', (data) => {
+            console.log('Données admin reçues:', data);
+            
+            // Mise à jour des statistiques
+            document.getElementById('online-count').textContent = data.onlinePlayers || '-';
+            document.getElementById('total-count').textContent = data.totalPlayers || '-';
+            document.getElementById('games-count').textContent = data.activeGames || '-';
+            document.getElementById('avg-score').textContent = data.averageScore || '-';
+            
+            // Tendance
+            document.getElementById('online-trend').textContent = data.onlineTrend > 0 
+                ? `↑ +${data.onlineTrend} dans la dernière heure` 
+                : data.onlineTrend < 0 
+                    ? `↓ ${data.onlineTrend} dans la dernière heure` 
+                    : 'Stable dans la dernière heure';
+            
+            // Dernière mise à jour
+            document.getElementById('last-update').textContent = `Dernière mise à jour: ${new Date().toLocaleTimeString()}`;
+            
+            // Mise à jour des informations serveur
+            if (data.serverInfo) {
+                document.getElementById('server-version').textContent = data.serverInfo.version || '-';
+                document.getElementById('uptime').textContent = formatUptime(data.serverInfo.uptime) || '-';
+                document.getElementById('memory-usage').textContent = formatMemory(data.serverInfo.memory) || '-';
+                document.getElementById('cpu-usage').textContent = data.serverInfo.cpu ? `${data.serverInfo.cpu}%` : '-';
+                document.getElementById('disk-usage').textContent = data.serverInfo.disk || '-';
+                document.getElementById('nodejs-version').textContent = data.serverInfo.nodeVersion || '-';
+            }
+        });
+        
+        socket.on('connectedPlayers', (players) => {
+            const tableBody = document.getElementById('players-list');
+            tableBody.innerHTML = '';
+            
+            if (players.length === 0) {
+                const row = document.createElement('tr');
+                row.innerHTML = '<td colspan="5">Aucun joueur connecté</td>';
+                tableBody.appendChild(row);
+                return;
+            }
+            
+            players.forEach(player => {
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                    <td>${player.pseudo}</td>
+                    <td>
+                        <span class="status-badge status-${player.status === 'active' ? 'active' : 'inactive'}">
+                            ${player.status === 'active' ? 'En jeu' : 'En menu'}
+                        </span>
+                    </td>
+                    <td>${formatTimeSince(player.connectedSince)}</td>
+                    <td>${maskIP(player.ip)}</td>
+                    <td>
+                        <button class="btn btn-danger btn-sm" onclick="disconnectPlayer('${player.id}')">
+                            Déconnecter
+                        </button>
+                    </td>
+                `;
+                tableBody.appendChild(row);
+            });
+        });
+        
+        socket.on('activeGames', (games) => {
+            const tableBody = document.getElementById('games-list');
+            tableBody.innerHTML = '';
+            
+            if (games.length === 0) {
+                const row = document.createElement('tr');
+                row.innerHTML = '<td colspan="6">Aucune partie en cours</td>';
+                tableBody.appendChild(row);
+                return;
+            }
+            
+            games.forEach(game => {
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                    <td>${game.id}</td>
+                    <td>${game.type}</td>
+                    <td>${game.players}/${game.maxPlayers}</td>
+                    <td>${game.currentRound}/${game.totalRounds}</td>
+                    <td>${formatTimeSince(game.startedAt)}</td>
+                    <td>
+                        <button class="btn btn-danger btn-sm" onclick="stopGame('${game.id}')">
+                            Arrêter
+                        </button>
+                    </td>
+                `;
+                tableBody.appendChild(row);
+            });
+        });
+        
+        // Utilitaires de formatage
+        function formatUptime(seconds) {
+            if (!seconds && seconds !== 0) return '-';
+            
+            const days = Math.floor(seconds / 86400);
+            const hours = Math.floor((seconds % 86400) / 3600);
+            const minutes = Math.floor((seconds % 3600) / 60);
+            
+            let result = '';
+            if (days > 0) result += `${days}j `;
+            if (hours > 0) result += `${hours}h `;
+            result += `${minutes}m`;
+            
+            return result;
+        }
+        
+        function formatMemory(bytes) {
+            if (!bytes && bytes !== 0) return '-';
+            
+            const mb = bytes / (1024 * 1024);
+            return mb < 1000 ? `${mb.toFixed(1)} MB` : `${(mb/1024).toFixed(1)} GB`;
+        }
+        
+        function formatTimeSince(timestamp) {
+            if (!timestamp) return '-';
+            
+            const now = new Date();
+            const date = new Date(timestamp);
+            const diffMs = now - date;
+            const diffMins = Math.floor(diffMs / 60000);
+            
+            if (diffMins < 1) return 'À l\'instant';
+            if (diffMins < 60) return `${diffMins} min`;
+            
+            const diffHours = Math.floor(diffMins / 60);
+            if (diffHours < 24) return `${diffHours}h ${diffMins % 60}min`;
+            
+            const diffDays = Math.floor(diffHours / 24);
+            return `${diffDays}j ${diffHours % 24}h`;
+        }
+        
+        function maskIP(ip) {
+            if (!ip) return '-';
+            return ip.replace(/(\d+)\.(\d+)\.(\d+)\.(\d+)/, '$1.$2.*.***');
+        }
+        
+        // Fonction pour déconnecter un joueur
+        function disconnectPlayer(playerId) {
+            if (confirm('Êtes-vous sûr de vouloir déconnecter ce joueur?')) {
+                socket.emit('disconnectPlayer', playerId);
+                alert('Joueur déconnecté');
+                refreshPlayers();
+            }
+        }
+        
+        // Fonction pour arrêter une partie
+        function stopGame(gameId) {
+            if (confirm('Êtes-vous sûr de vouloir arrêter cette partie?')) {
+                socket.emit('stopGame', gameId);
+                alert('Partie arrêtée');
+                refreshGames();
+            }
+        }
+        
+        // Initialisation
+        document.addEventListener('DOMContentLoaded', () => {
+            initCharts();
+            
+            // Actualisation automatique des données
+            setInterval(refreshData, 30000); // 30 secondes
+            
+            // Auto-refresh pour les joueurs si activé
+            setInterval(() => {
+                if (document.getElementById('auto-refresh-players').checked) {
+                    refreshPlayers();
+                }
+            }, 30000);
+        });
+    </script>
+</body>
+</html>
