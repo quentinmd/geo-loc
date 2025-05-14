@@ -474,7 +474,9 @@
                     disableDefaultUI: true,
                     zoomControl: true,
                     addressControl: false,
-                    fullscreenControl: false
+                    fullscreenControl: false,
+                    showRoadLabels: false,  // Masque les noms de rues
+                    linksControl: true      // Garde les flèches de navigation
                 }
             );
 
@@ -842,7 +844,9 @@ function checkValidPanorama(streetViewService, position) {
             disableDefaultUI: true,
             zoomControl: true,
             addressControl: false,
-            fullscreenControl: false
+            fullscreenControl: false,
+            showRoadLabels: false,  // Masque les noms de rues
+            linksControl: true      // Garde les flèches de navigation
         }
     );
 
