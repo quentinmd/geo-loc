@@ -436,5 +436,16 @@ async function savePlayerStats() {
   }
 }
 
+// Dans votre server.js, ajoutez ces routes
+app.get('/admin', (req, res) => {
+  const password = req.query.key;
+  // Mot de passe stocké dans les variables d'environnement
+  if (password === process.env.ADMIN_PASSWORD) {
+    res.sendFile(path.join(__dirname, 'public', 'admin.html'));
+  } else {
+    res.status(403).send('Accès refusé');
+  }
+});
+
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => console.log(`Server running on port ${PORT}`));
