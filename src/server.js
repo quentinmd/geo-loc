@@ -56,6 +56,24 @@ const StatsHistorySchema = new mongoose.Schema({
 
 const StatsHistory = mongoose.model('StatsHistory', StatsHistorySchema);
 
+// Modèle pour l'historique des parties
+const GameHistorySchema = new mongoose.Schema({
+  gameId: { type: String, required: true },
+  startTime: { type: Date, default: Date.now },
+  endTime: { type: Date },
+  rounds: { type: Number, default: 0 },
+  players: [{ 
+    pseudo: String, 
+    score: Number 
+  }],
+  locations: [{ 
+    lat: Number, 
+    lng: Number 
+  }]
+});
+
+const GameHistory = mongoose.model('GameHistory', GameHistorySchema);
+
 // Remplacer vos variables de statistiques par ceci
 let onlinePlayers = 0;
 let totalPlayers = 0;
@@ -294,6 +312,7 @@ io.on('connection', (socket) => {
     const game = games.get(gameId);
     game.locations = locations;
     game.started = true;
+    game.startTime = new Date(); // Ajouter l'heure de début
     
     // Envoyer les données de départ à tous les joueurs
     io.to(gameId).emit('gameStarted', {
@@ -354,6 +373,9 @@ io.on('connection', (socket) => {
           const finalResults = Array.from(game.players.values())
             .map(p => ({ pseudo: p.pseudo, score: p.score }))
             .sort((a, b) => b.score - a.score); // Trier par score décroissant
+          
+          // Enregistrer la partie terminée dans l'historique
+          saveGameToHistory(gameId, game, finalResults);
           
           io.to(gameId).emit('endGame', finalResults);
         }
@@ -560,6 +582,22 @@ io.on('connection', (socket) => {
         difficultLocations
     });
   });
+
+  socket.on('getGameHistory', async () => {
+    if (!socket.rooms.has('admin-room')) return;
+    
+    try {
+      // Récupérer les 20 dernières parties
+      const history = await GameHistory.find()
+        .sort({ endTime: -1 })
+        .limit(20);
+      
+      socket.emit('gameHistory', history);
+    } catch (err) {
+      console.error('Erreur lors de la récupération de l\'historique:', err);
+      socket.emit('gameHistory', []);
+    }
+  });
 });
 
 // Fonction pour générer des lieux (similaire à findValidLocation du client)
@@ -683,3 +721,70 @@ app.get('/admin', (req, res) => {
 
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+
+// Fonction pour sauvegarder une partie terminée dans l'historique
+async function saveGameToHistory(gameId, game, finalResults) {
+  try {
+    // Créer un document d'historique de partie
+    await GameHistory.create({
+      gameId: gameId,
+      startTime: game.startTime || new Date(Date.now() - 1000 * 60 * game.rounds), // Estimation si startTime non disponible
+      endTime: new Date(),
+      rounds: game.rounds,
+      players: finalResults,
+      locations: game.locations
+    });
+    
+    console.log(`Partie ${gameId} sauvegardée dans l'historique`);
+  } catch (err) {
+    console.error('Erreur lors de l\'enregistrement de l\'historique de partie:', err);
+  }
+}
+
+// Dans votre fichier JavaScript admin
+function refreshGameHistory() {
+  socket.emit('getGameHistory');
+  document.getElementById('game-history').innerHTML = '<tr><td colspan="6">Chargement de l\'historique...</td></tr>';
+}
+
+socket.on('gameHistory', (history) => {
+  const tableBody = document.getElementById('game-history');
+  tableBody.innerHTML = '';
+  
+  if (!history || history.length === 0) {
+    tableBody.innerHTML = '<tr><td colspan="6">Aucune partie dans l\'historique</td></tr>';
+    return;
+  }
+  
+  history.forEach(game => {
+    const startDate = new Date(game.startTime);
+    const endDate = new Date(game.endTime);
+    const duration = Math.round((endDate - startDate) / 60000); // en minutes
+    
+    // Trouver le meilleur score
+    let bestScore = 0;
+    let bestPlayer = '';
+    
+    if (game.players && game.players.length > 0) {
+      bestScore = game.players[0].score;
+      bestPlayer = game.players[0].pseudo;
+    }
+    
+    const row = document.createElement('tr');
+    row.innerHTML = `
+      <td>${game.gameId}</td>
+      <td>${startDate.toLocaleString()}</td>
+      <td>${duration} min</td>
+      <td>${game.players ? game.players.length : 0}</td>
+      <td>${game.rounds}</td>
+      <td>${bestPlayer}: ${bestScore} pts</td>
+    `;
+    tableBody.appendChild(row);
+  });
+});
+
+// Appeler au chargement de la page
+document.addEventListener('DOMContentLoaded', () => {
+  // ... autres initialisations ...
+  refreshGameHistory();
+});
