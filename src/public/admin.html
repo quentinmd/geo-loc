@@ -561,6 +561,31 @@
                     </form>
                 </div>
             </section>
+            
+            <!-- À placer dans la section "Games" ou où tu veux afficher l'historique -->
+            <div class="card" style="margin-top: 20px;">
+                <h3>Historique des parties</h3>
+                <button class="btn" onclick="refreshGameHistory()">Actualiser</button>
+                <div class="table-responsive">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>ID Partie</th>
+                                <th>Date</th>
+                                <th>Durée</th>
+                                <th>Joueurs</th>
+                                <th>Manches</th>
+                                <th>Meilleur score</th>
+                            </tr>
+                        </thead>
+                        <tbody id="game-history">
+                            <tr>
+                                <td colspan="6">Chargement de l'historique...</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
         </div>
     </div>
     
@@ -904,6 +929,46 @@
                 });
             }
         });
+
+        // Fonction pour rafraîchir l'historique
+        function refreshGameHistory() {
+            socket.emit('getGameHistory');
+            document.getElementById('game-history').innerHTML = '<tr><td colspan="6">Chargement de l\'historique...</td></tr>';
+        }
+
+        // Réception et affichage des données
+        socket.on('gameHistory', (history) => {
+            const tableBody = document.getElementById('game-history');
+            tableBody.innerHTML = '';
+            if (!history || history.length === 0) {
+                tableBody.innerHTML = '<tr><td colspan="6">Aucune partie dans l\'historique</td></tr>';
+                return;
+            }
+            history.forEach(game => {
+                const startDate = new Date(game.startTime);
+                const endDate = new Date(game.endTime);
+                const duration = Math.round((endDate - startDate) / 60000); // minutes
+                let bestScore = 0;
+                let bestPlayer = '';
+                if (game.players && game.players.length > 0) {
+                    bestScore = game.players[0].score;
+                    bestPlayer = game.players[0].pseudo;
+                }
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                    <td>${game.gameId}</td>
+                    <td>${startDate.toLocaleString()}</td>
+                    <td>${duration} min</td>
+                    <td>${game.players ? game.players.length : 0}</td>
+                    <td>${game.rounds}</td>
+                    <td>${bestPlayer}: ${bestScore} pts</td>
+                `;
+                tableBody.appendChild(row);
+            });
+        });
+
+        // Appel automatique au chargement
+        document.addEventListener('DOMContentLoaded', refreshGameHistory);
     </script>
 </body>
 </html>
