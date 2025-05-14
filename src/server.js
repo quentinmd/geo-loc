@@ -399,6 +399,112 @@ io.on('connection', (socket) => {
   socket.on('saveScore', (player) => {
     saveScore(player);
   });
+
+  // Événements pour l'administration
+  socket.on('adminAuth', () => {
+    // Vérifiez si le client est sur la page admin (via referer par exemple)
+    socket.join('admin-room');
+  });
+
+  socket.on('getAdminData', () => {
+    if (!socket.rooms.has('admin-room')) return;
+
+    // Récupérer les données pour le tableau de bord
+    const adminData = {
+      onlinePlayers,
+      totalPlayers,
+      activeGames: games.size,
+      averageScore: calculateAverageScore(),
+      onlineTrend: calculateOnlineTrend(),
+      serverInfo: {
+        version: '1.0.0',
+        uptime: Math.floor(process.uptime()),
+        memory: process.memoryUsage().heapUsed,
+        cpu: Math.floor(Math.random() * 20) + 5, // Simulation
+        disk: '135.39 MB / 512.00 MB',
+        nodeVersion: process.version
+      }
+    };
+
+    socket.emit('adminData', adminData);
+  });
+
+  socket.on('getConnectedPlayers', () => {
+    if (!socket.rooms.has('admin-room')) return;
+
+    // Créer un tableau des joueurs connectés
+    const connectedPlayers = [];
+    
+    // Pour chaque socket connecté
+    io.sockets.sockets.forEach(clientSocket => {
+      if (clientSocket.pseudo) { // Si le socket a un pseudo défini
+        connectedPlayers.push({
+          id: clientSocket.id,
+          pseudo: clientSocket.pseudo || 'Anonyme',
+          status: clientSocket.gameId ? 'active' : 'menu',
+          connectedSince: clientSocket.connectTime || new Date(),
+          ip: clientSocket.handshake.address.replace(/^::ffff:/, '')
+        });
+      }
+    });
+
+    socket.emit('connectedPlayers', connectedPlayers);
+  });
+
+  socket.on('getActiveGames', () => {
+    if (!socket.rooms.has('admin-room')) return;
+
+    // Créer un tableau des parties actives
+    const activeGames = [];
+    
+    games.forEach((game, gameId) => {
+      activeGames.push({
+        id: gameId,
+        type: 'Multijoueur',
+        players: game.players.size,
+        maxPlayers: 10, // À ajuster selon votre logique
+        currentRound: game.currentRound + 1,
+        totalRounds: game.rounds,
+        startedAt: game.startTime || new Date()
+      });
+    });
+
+    socket.emit('activeGames', activeGames);
+  });
+
+  // Événements d'action admin (déconnecter joueur, arrêter partie)
+  socket.on('disconnectPlayer', (playerId) => {
+    if (!socket.rooms.has('admin-room')) return;
+    
+    const playerSocket = io.sockets.sockets.get(playerId);
+    if (playerSocket) {
+      playerSocket.disconnect(true);
+    }
+  });
+
+  socket.on('stopGame', (gameId) => {
+    if (!socket.rooms.has('admin-room')) return;
+    
+    if (games.has(gameId)) {
+      const game = games.get(gameId);
+      
+      // Notifier tous les joueurs que la partie est arrêtée
+      const players = Array.from(game.players.values());
+      io.to(gameId).emit('gameStoppedByAdmin');
+      
+      // Supprimer la partie
+      games.delete(gameId);
+    }
+  });
+
+  // Événement pour mettre à jour les paramètres du serveur
+  socket.on('updateSettings', (settings) => {
+    if (!socket.rooms.has('admin-room')) return;
+    
+    // Appliquer les nouveaux paramètres
+    console.log('Nouveaux paramètres:', settings);
+    // Ici, vous pourriez mettre à jour des variables globales ou une config
+  });
 });
 
 // Fonction pour générer des lieux (similaire à findValidLocation du client)
@@ -443,7 +549,7 @@ app.get('/admin', (req, res) => {
   if (password === process.env.ADMIN_PASSWORD) {
     res.sendFile(path.join(__dirname, 'public', 'admin.html'));
   } else {
-    res.status(403).send('Accès refusé');
+    res.status(403).send('<h1>Accès refusé</h1><p>Vous n\'avez pas l\'autorisation d\'accéder à cette page.</p>');
   }
 });
 
