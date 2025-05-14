@@ -747,8 +747,3 @@ function refreshGameHistory() {
   document.getElementById('game-history').innerHTML = '<tr><td colspan="6">Chargement de l\'historique...</td></tr>';
 }
 
-// Appeler au chargement de la page
-document.addEventListener('DOMContentLoaded', () => {
-  // ... autres initialisations ...
-  refreshGameHistory();
-});
