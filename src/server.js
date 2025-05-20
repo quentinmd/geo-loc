@@ -1,4 +1,3 @@
-// server.js
 const express = require('express');
 const http = require('http');
 const socketio = require('socket.io');
@@ -11,19 +10,17 @@ const app = express();
 const server = http.createServer(app);
 const io = socketio(server, {cors: {origin: "*"}});
 
-// Chaîne de connexion (remplacez par la vôtre)
+// Chaîne de connexion MongoDB
 const MONGODB_URI = 'mongodb+srv://qmouraud:RWRk4FgMHqpDDvBs@geoloc.oydw5i7.mongodb.net/?retryWrites=true&w=majority&appName=GeoLOCy';
 
 // Connexion à MongoDB
 mongoose.connect(MONGODB_URI)
-  
-.then(() => console.log('MongoDB connecté'))
-.catch(err => console.error('Erreur MongoDB:', err));
+  .then(() => console.log('MongoDB connecté'))
+  .catch(err => console.error('Erreur MongoDB:', err));
 
-// Améliorez la gestion des erreurs de connexion
+// Gestion des erreurs de connexion
 mongoose.connection.on('error', (err) => {
   console.error('Erreur de connexion MongoDB:', err);
-  // Tentative de reconnexion après un délai
   setTimeout(() => {
     mongoose.connect(MONGODB_URI);
   }, 5000);
@@ -36,24 +33,24 @@ mongoose.connection.on('disconnected', () => {
   }, 5000);
 });
 
-// Créer un modèle pour les statistiques
+// ===== DÉFINITION DES MODÈLES MONGOOSE =====
+
+// Modèle pour les statistiques globales
 const StatsSchema = new mongoose.Schema({
   id: { type: String, default: 'global' },
   online: { type: Number, default: 0 },
   total: { type: Number, default: 0 },
   lastUpdated: { type: Date, default: Date.now }
 });
-
 const Stats = mongoose.model('Stats', StatsSchema);
 
-// Historique des statistiques pour MongoDB
+// Historique des statistiques
 const StatsHistorySchema = new mongoose.Schema({
   timestamp: { type: Date, default: Date.now },
   online: { type: Number, default: 0 },
   averageScore: { type: Number, default: 0 },
   activeGames: { type: Number, default: 0 }
 });
-
 const StatsHistory = mongoose.model('StatsHistory', StatsHistorySchema);
 
 // Modèle pour l'historique des parties
@@ -71,14 +68,34 @@ const GameHistorySchema = new mongoose.Schema({
     lng: Number 
   }]
 });
-
 const GameHistory = mongoose.model('GameHistory', GameHistorySchema);
 
-// Remplacer vos variables de statistiques par ceci
+// Modèle pour le classement (leaderboard)
+const LeaderboardSchema = new mongoose.Schema({
+  pseudo: { type: String, required: true, unique: true },
+  score: { type: Number, default: 0 },
+  date: { type: Date, default: Date.now }
+});
+const Leaderboard = mongoose.model('Leaderboard', LeaderboardSchema);
+
+// ===== VARIABLES GLOBALES =====
 let onlinePlayers = 0;
 let totalPlayers = 0;
+let leaderboard = []; // Cache du leaderboard
+const recentPlayers = [];
+const MAX_RECENT_PLAYERS = 5;
+const games = new Map();
 
-// Charger les statistiques au démarrage
+// Historique des joueurs pour le calcul de tendances
+const playersHistory = {
+  timestamps: [],
+  counts: [],
+  maxEntries: 24 // Garder 24 entrées (pour suivre les dernières 24h avec une mesure/heure)
+};
+
+// ===== FONCTIONS D'INITIALISATION =====
+
+// Chargement des statistiques au démarrage
 async function initStats() {
   try {
     const stats = await Stats.findOne({ id: 'global' });
@@ -86,7 +103,6 @@ async function initStats() {
       totalPlayers = stats.total;
       console.log(`Statistiques chargées: ${totalPlayers} joueurs au total`);
     } else {
-      // Créer un document de statistiques s'il n'existe pas
       await Stats.create({ 
         id: 'global', 
         online: 0, 
@@ -100,52 +116,24 @@ async function initStats() {
   }
 }
 
-// Appeler cette fonction au démarrage
-initStats();
-
-// Stockage des meilleurs scores et des joueurs récents
-const leaderboard = [];
-const recentPlayers = [];
-const MAX_LEADERBOARD_SIZE = 10;
-const MAX_RECENT_PLAYERS = 5;
-
-// Historique des joueurs en ligne pour le calcul de tendances
-const playersHistory = {
-  timestamps: [],
-  counts: [],
-  maxEntries: 24 // Garder 24 entrées (pour suivre les dernières 24h avec une mesure/heure)
-};
-
-// Fonction pour sauvegarder un score dans le classement
-function saveScore(player) {
-  // Ne pas enregistrer les scores anonymes ou vides
-  if (!player.pseudo || player.pseudo === 'Joueur') return;
-  
-  // Vérifier si le joueur existe déjà
-  const existingIndex = leaderboard.findIndex(p => p.pseudo === player.pseudo);
-  if (existingIndex >= 0) {
-    // Mettre à jour le score si c'est meilleur
-    if (player.score > leaderboard[existingIndex].score) {
-      leaderboard[existingIndex].score = player.score;
-      leaderboard[existingIndex].date = new Date().toISOString();
-    }
-  } else {
-    // Ajouter un nouveau joueur
-    leaderboard.push({
-      pseudo: player.pseudo,
-      score: player.score,
-      date: new Date().toISOString()
-    });
-  }
-  
-  // Trier et limiter la taille du classement
-  leaderboard.sort((a, b) => b.score - a.score);
-  if (leaderboard.length > MAX_LEADERBOARD_SIZE) {
-    leaderboard.length = MAX_LEADERBOARD_SIZE;
+// Chargement du leaderboard depuis MongoDB
+async function loadLeaderboard() {
+  try {
+    leaderboard = await Leaderboard.find().sort({ score: -1 }).limit(10).lean();
+    console.log(`Leaderboard chargé: ${leaderboard.length} joueurs`);
+  } catch (err) {
+    console.error('Erreur lors du chargement du leaderboard:', err);
   }
 }
 
-// Fonction pour enregistrer un joueur récent
+// ===== FONCTIONS UTILITAIRES =====
+
+// Génération d'un ID de partie
+function generateGameId() {
+  return Math.random().toString(36).substr(2, 6).toUpperCase();
+}
+
+// Enregistrer un joueur récent
 function addRecentPlayer(pseudo) {
   if (!pseudo || pseudo === 'Joueur') return;
   
@@ -167,10 +155,134 @@ function addRecentPlayer(pseudo) {
   }
 }
 
-// Au lieu de servir simplement les fichiers statiques
-// On va intercepter la requête pour index.html
+// Sauvegarder un score dans MongoDB
+async function saveScore(player) {
+  if (!player.pseudo || player.pseudo === 'Joueur') return;
+  
+  try {
+    const existing = await Leaderboard.findOne({ pseudo: player.pseudo });
+    if (!existing || player.score > existing.score) {
+      await Leaderboard.findOneAndUpdate(
+        { pseudo: player.pseudo },
+        { score: player.score, date: new Date() },
+        { upsert: true }
+      );
+      await loadLeaderboard(); // Recharger le leaderboard en mémoire
+      console.log(`Score de ${player.pseudo} enregistré: ${player.score}`);
+    }
+  } catch (err) {
+    console.error('Erreur lors de la sauvegarde du score:', err);
+  }
+}
+
+// Sauvegarder l'historique d'une partie
+async function saveGameToHistory(gameId, game, finalResults) {
+  try {
+    await GameHistory.create({
+      gameId: gameId,
+      startTime: game.startTime || new Date(Date.now() - 1000 * 60 * game.rounds),
+      endTime: new Date(),
+      rounds: game.rounds,
+      players: finalResults,
+      locations: game.locations || []
+    });
+    
+    console.log(`Partie ${gameId} sauvegardée dans l'historique`);
+  } catch (err) {
+    console.error('Erreur lors de l\'enregistrement de l\'historique de partie:', err);
+  }
+}
+
+// Calculer le score moyen
+function calculateAverageScore() {
+  // Si nous avons des scores dans le leaderboard
+  if (leaderboard.length > 0) {
+    const sum = leaderboard.reduce((total, player) => total + player.score, 0);
+    return Math.round(sum / leaderboard.length);
+  }
+  
+  // Si nous avons des parties actives, calculer la moyenne des scores en cours
+  let activePlayers = 0;
+  let activeScoresSum = 0;
+  
+  games.forEach(game => {
+    game.players.forEach(player => {
+      activePlayers++;
+      activeScoresSum += player.score || 0;
+    });
+  });
+  
+  if (activePlayers > 0) {
+    return Math.round(activeScoresSum / activePlayers);
+  }
+  
+  return 0; // Pas de scores disponibles
+}
+
+// Calculer la tendance d'activité
+function calculateOnlineTrend() {
+  const now = Date.now();
+  
+  // Ajouter le nombre actuel à l'historique
+  playersHistory.timestamps.push(now);
+  playersHistory.counts.push(onlinePlayers);
+  
+  // Ne garder que les X dernières entrées
+  if (playersHistory.timestamps.length > playersHistory.maxEntries) {
+    playersHistory.timestamps.shift();
+    playersHistory.counts.shift();
+  }
+  
+  // Si nous avons suffisamment d'historique (au moins 2 points)
+  if (playersHistory.counts.length >= 2) {
+    // Comparer avec la valeur la plus ancienne
+    const current = onlinePlayers;
+    const previous = playersHistory.counts[0];
+    
+    return current - previous;
+  }
+  
+  return 0; // Pas assez de données
+}
+
+// Sauvegarder les statistiques de joueurs
+async function savePlayerStats() {
+  try {
+    await Stats.findOneAndUpdate(
+      { id: 'global' },
+      { 
+        online: onlinePlayers,
+        total: totalPlayers,
+        lastUpdated: new Date()
+      },
+      { upsert: true }
+    );
+    console.log(`Statistiques sauvegardées: ${onlinePlayers} en ligne, ${totalPlayers} au total`);
+  } catch (err) {
+    console.error('Erreur lors de la sauvegarde des statistiques:', err);
+  }
+}
+
+// Générer des lieux aléatoires
+async function generateLocations(count) {
+  // Coordonnées aléatoires (à améliorer avec l'API StreetView)
+  const locations = [];
+  for (let i = 0; i < count; i++) {
+    locations.push({
+      lat: Math.random() * 160 - 80,
+      lng: Math.random() * 360 - 180
+    });
+  }
+  return locations;
+}
+
+// ===== INITIALISATION AU DÉMARRAGE =====
+initStats();
+loadLeaderboard();
+
+// ===== ROUTES EXPRESS =====
 app.get('/', (req, res) => {
-  // Lire le fichier index.html
+  // Lire le fichier index.html et remplacer la clé API
   const indexPath = path.join(__dirname, 'public', 'index.html');
   fs.readFile(indexPath, 'utf8', (err, data) => {
     if (err) {
@@ -178,7 +290,6 @@ app.get('/', (req, res) => {
       return res.status(500).send('Erreur serveur');
     }
     
-    // Remplacer le placeholder par la clé API
     const apiKey = process.env.GOOGLE_MAPS_API_KEY || '';
     const modifiedHtml = data.replace('GOOGLE_MAPS_API_KEY_PLACEHOLDER', apiKey);
     
@@ -186,11 +297,27 @@ app.get('/', (req, res) => {
   });
 });
 
-// Servir les autres fichiers statiques normalement
+app.get('/admin', (req, res) => {
+  const password = req.query.key;
+  const adminPassword = 'QUENTIN44';
+  
+  if (password === adminPassword) {
+    res.sendFile(path.join(__dirname, 'public', 'admin.html'));
+  } else {
+    res.status(403).send('<h1>Accès refusé</h1><p>Mot de passe incorrect</p>');
+  }
+});
+
+// Route ping pour maintenir le service actif
+app.get('/ping', (req, res) => {
+  console.log('Ping reçu à', new Date().toISOString());
+  res.status(200).send('OK');
+});
+
+// Fichiers statiques
 app.use(express.static(path.join(__dirname, 'public')));
 
-const games = new Map();
-
+// ===== GESTIONNAIRES SOCKET.IO =====
 io.on('connection', (socket) => {
   console.log('Nouvelle connexion:', socket.id);
 
@@ -198,7 +325,7 @@ io.on('connection', (socket) => {
   onlinePlayers++;
   totalPlayers++;
 
-  // Sauvegarder les statistiques périodiquement
+  // Sauvegarder les statistiques
   savePlayerStats();
 
   // Envoyer les statistiques aux clients qui les demandent
@@ -256,10 +383,10 @@ io.on('connection', (socket) => {
     socket.join(gameId);
     socket.gameId = gameId;
     
-    // Informer tout le monde dans la partie qu'un joueur a rejoint
+    // Informer tout le monde dans la partie
     io.to(gameId).emit('playerJoined', Array.from(game.players.values()));
     
-    // Informer le joueur qui vient de rejoindre qu'il a bien été connecté
+    // Confirmer au joueur qui vient de rejoindre
     socket.emit('joinedGame', gameId, Array.from(game.players.values()));
   });
 
@@ -270,13 +397,11 @@ io.on('connection', (socket) => {
     game.players.delete(socket.id);
     
     if (game.players.size === 0) {
-      // Si plus personne dans la partie, on la supprime
       games.delete(gameId);
     } else {
-      // Sinon on informe les autres joueurs
       io.to(gameId).emit('playerJoined', Array.from(game.players.values()));
       
-      // Si l'hôte quitte, on désigne un nouvel hôte
+      // Si l'hôte quitte, désigner un nouvel hôte
       if (Array.from(game.players.values()).every(p => !p.isHost)) {
         const newHost = Array.from(game.players.values())[0];
         newHost.isHost = true;
@@ -297,12 +422,11 @@ io.on('connection', (socket) => {
     const player = game.players.get(socket.id);
     if (!player || !player.isHost) return;
     
-    // Mettre à jour le nombre de manches si fourni
     if (rounds) {
       game.rounds = rounds;
     }
     
-    // On ne génère plus les emplacements ici, on attend le client
+    // Demander au client de proposer des emplacements
     socket.emit('requestLocations', gameId, game.rounds);
   });
 
@@ -312,9 +436,8 @@ io.on('connection', (socket) => {
     const game = games.get(gameId);
     game.locations = locations;
     game.started = true;
-    game.startTime = new Date(); // Ajouter l'heure de début
+    game.startTime = new Date();
     
-    // Envoyer les données de départ à tous les joueurs
     io.to(gameId).emit('gameStarted', {
       rounds: game.rounds,
       currentRound: 0,
@@ -336,7 +459,7 @@ io.on('connection', (socket) => {
     // Stocker le score du joueur
     player.score = (player.score || 0) + guessData.score;
     
-    // Stocker le résultat pour ce tour
+    // Stocker le résultat pour ce tour avec la position du joueur
     if (!game.roundResults) {
       game.roundResults = new Map();
     }
@@ -345,18 +468,33 @@ io.on('connection', (socket) => {
       playerId: socket.id,
       pseudo: player.pseudo,
       distance: guessData.distance,
-      score: guessData.score
+      score: guessData.score,
+      position: guessData.position // Stocker la position du joueur
     });
     
     console.log(`Joueur ${player.pseudo} a deviné avec ${guessData.distance}km de distance, score: ${guessData.score}`);
     
-    // Vérifier si tous les joueurs ont soumis leur réponse
+    // Informer le joueur que sa réponse est enregistrée (mais pas encore les résultats)
+    socket.emit('guessRegistered');
+    
+    // Informer tous les joueurs du nombre de réponses
+    const totalPlayers = game.players.size;
+    const answeredPlayers = game.roundResults.size;
+    io.to(gameId).emit('guessProgress', {
+      answered: answeredPlayers,
+      total: totalPlayers
+    });
+    
+    // Vérifier si tous les joueurs ont répondu
     if (game.roundResults.size === game.players.size) {
-      // Tous les joueurs ont répondu, on peut passer à la manche suivante
       const results = Array.from(game.roundResults.values());
+      const currentLocation = game.locations[game.currentRound];
       
-      // Envoyer les résultats à tous les joueurs
-      io.to(gameId).emit('roundComplete', results);
+      // Envoyer les résultats à tous les joueurs avec la position réelle et toutes les positions des joueurs
+      io.to(gameId).emit('roundComplete', {
+        results: results,
+        actualPosition: currentLocation
+      });
       
       // Après un délai, passer à la manche suivante
       setTimeout(() => {
@@ -372,21 +510,21 @@ io.on('connection', (socket) => {
           // Fin de la partie
           const finalResults = Array.from(game.players.values())
             .map(p => ({ pseudo: p.pseudo, score: p.score }))
-            .sort((a, b) => b.score - a.score); // Trier par score décroissant
+            .sort((a, b) => b.score - a.score);
           
-          // Enregistrer la partie terminée dans l'historique
+          // Enregistrer la partie terminée dans MongoDB
           saveGameToHistory(gameId, game, finalResults);
           
           io.to(gameId).emit('endGame', finalResults);
         }
-      }, 5000); // 5 secondes pour lire les résultats
+      }, 10000); // Augmenter le délai à 10 secondes pour laisser le temps de voir les résultats
     }
   });
 
   socket.on('disconnect', () => {
     console.log('Déconnexion:', socket.id);
     
-    // Si le joueur était dans une partie, le retirer
+    // Si le joueur était dans une partie
     if (socket.gameId && games.has(socket.gameId)) {
       const gameId = socket.gameId;
       const game = games.get(gameId);
@@ -398,7 +536,7 @@ io.on('connection', (socket) => {
       } else {
         io.to(gameId).emit('playerJoined', Array.from(game.players.values()));
         
-        // Si l'hôte quitte, on désigne un nouvel hôte
+        // Si l'hôte quitte, désigner un nouvel hôte
         if (Array.from(game.players.values()).every(p => !p.isHost)) {
           const newHost = Array.from(game.players.values())[0];
           newHost.isHost = true;
@@ -410,45 +548,46 @@ io.on('connection', (socket) => {
     // Décrémenter lors de la déconnexion
     onlinePlayers--;
     
-    // Mettre à jour les stats pour tous les clients
+    // Mettre à jour les stats pour tous
     io.emit('playerStats', {
       online: onlinePlayers,
       total: totalPlayers
     });
   });
 
-  // Envoyer les données de classement
-  socket.on('getLeaderboard', () => {
-    socket.emit('leaderboardData', leaderboard);
+  // Événements de leaderboard et joueurs récents
+  socket.on('getLeaderboard', async () => {
+    try {
+      const topScores = await Leaderboard.find().sort({ score: -1 }).limit(10).lean();
+      socket.emit('leaderboardData', topScores);
+    } catch (err) {
+      console.error('Erreur lors de la récupération du leaderboard:', err);
+      socket.emit('leaderboardData', []);
+    }
   });
 
-  // Envoyer les données des joueurs récents
   socket.on('getRecentPlayers', () => {
     socket.emit('recentPlayersData', recentPlayers);
   });
 
-  // Enregistrer le joueur comme récent à la connexion
   socket.on('registerPlayer', (pseudo) => {
     if (pseudo) {
       addRecentPlayer(pseudo);
     }
   });
 
-  // Dans le gestionnaire 'endGame' :
-  socket.on('saveScore', (player) => {
-    saveScore(player);
+  socket.on('saveScore', async (player) => {
+    await saveScore(player);
   });
 
-  // Événements pour l'administration
+  // Événements d'administration
   socket.on('adminAuth', () => {
-    // Vérifiez si le client est sur la page admin (via referer par exemple)
     socket.join('admin-room');
   });
 
   socket.on('getAdminData', () => {
     if (!socket.rooms.has('admin-room')) return;
 
-    // Récupérer les données pour le tableau de bord
     const adminData = {
       onlinePlayers,
       totalPlayers,
@@ -471,12 +610,10 @@ io.on('connection', (socket) => {
   socket.on('getConnectedPlayers', () => {
     if (!socket.rooms.has('admin-room')) return;
 
-    // Créer un tableau des joueurs connectés
     const connectedPlayers = [];
     
-    // Pour chaque socket connecté
     io.sockets.sockets.forEach(clientSocket => {
-      if (clientSocket.pseudo) { // Si le socket a un pseudo défini
+      if (clientSocket.pseudo) {
         connectedPlayers.push({
           id: clientSocket.id,
           pseudo: clientSocket.pseudo || 'Anonyme',
@@ -493,7 +630,6 @@ io.on('connection', (socket) => {
   socket.on('getActiveGames', () => {
     if (!socket.rooms.has('admin-room')) return;
 
-    // Créer un tableau des parties actives
     const activeGames = [];
     
     games.forEach((game, gameId) => {
@@ -501,7 +637,7 @@ io.on('connection', (socket) => {
         id: gameId,
         type: 'Multijoueur',
         players: game.players.size,
-        maxPlayers: 10, // À ajuster selon votre logique
+        maxPlayers: 10,
         currentRound: game.currentRound + 1,
         totalRounds: game.rounds,
         startedAt: game.startTime || new Date()
@@ -511,7 +647,6 @@ io.on('connection', (socket) => {
     socket.emit('activeGames', activeGames);
   });
 
-  // Événements d'action admin (déconnecter joueur, arrêter partie)
   socket.on('disconnectPlayer', (playerId) => {
     if (!socket.rooms.has('admin-room')) return;
     
@@ -526,60 +661,49 @@ io.on('connection', (socket) => {
     
     if (games.has(gameId)) {
       const game = games.get(gameId);
-      
-      // Notifier tous les joueurs que la partie est arrêtée
-      const players = Array.from(game.players.values());
       io.to(gameId).emit('gameStoppedByAdmin');
-      
-      // Supprimer la partie
       games.delete(gameId);
     }
   });
 
-  // Événement pour mettre à jour les paramètres du serveur
   socket.on('updateSettings', (settings) => {
     if (!socket.rooms.has('admin-room')) return;
-    
-    // Appliquer les nouveaux paramètres
     console.log('Nouveaux paramètres:', settings);
-    // Ici, vous pourriez mettre à jour des variables globales ou une config
   });
 
   socket.on('getActivityHistory', () => {
     if (!socket.rooms.has('admin-room')) return;
     
     socket.emit('activityHistory', {
-        timestamps: playersHistory.timestamps,
-        counts: playersHistory.counts
+      timestamps: playersHistory.timestamps,
+      counts: playersHistory.counts
     });
   });
 
-  // Dans votre fichier server.js, ajoutez ce gestionnaire d'événement
   socket.on('getDetailedStats', () => {
     if (!socket.rooms.has('admin-room')) return;
     
-    // Création de données de distribution de scores basées sur les scores réels
+    // Distribution des scores
     const scoreDistribution = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]; // 10 catégories
     
     leaderboard.forEach(player => {
-        const score = player.score;
-        const index = Math.min(9, Math.floor(score / 500)); // 0-500, 500-1000, etc.
-        if (index >= 0 && index < 10) {
-            scoreDistribution[index]++;
-        }
+      const score = player.score;
+      const index = Math.min(9, Math.floor(score / 500)); // 0-500, 500-1000, etc.
+      if (index >= 0 && index < 10) {
+        scoreDistribution[index]++;
+      }
     });
     
-    // Activité quotidienne (à partir de StatsHistory)
-    const dailyActivity = [0, 0, 0, 0, 0, 0, 0]; // Pour les 7 derniers jours
+    // Activité quotidienne
+    const dailyActivity = [0, 0, 0, 0, 0, 0, 0]; // 7 derniers jours
     
-    // Recueillir les données des destinations difficiles
+    // Destinations difficiles
     const difficultLocations = [];
     
-    // Collecting real data would require additional tracking, but here's what we've tracked:
     socket.emit('detailedStats', {
-        scoreDistribution,
-        dailyActivity,
-        difficultLocations
+      scoreDistribution,
+      dailyActivity,
+      difficultLocations
     });
   });
 
@@ -587,7 +711,6 @@ io.on('connection', (socket) => {
     if (!socket.rooms.has('admin-room')) return;
     
     try {
-      // Récupérer les 20 dernières parties
       const history = await GameHistory.find()
         .sort({ endTime: -1 })
         .limit(20);
@@ -600,99 +723,14 @@ io.on('connection', (socket) => {
   });
 });
 
-// Fonction pour générer des lieux (similaire à findValidLocation du client)
-async function generateLocations(count) {
-  // Pour le moment, retournons des coordonnées aléatoires (à améliorer avec l'API StreetView)
-  const locations = [];
-  for (let i = 0; i < count; i++) {
-    locations.push({
-      lat: Math.random() * 160 - 80,
-      lng: Math.random() * 360 - 180
-    });
-  }
-  return locations;
-}
+// ===== TÂCHES PLANIFIÉES =====
 
-function generateGameId() {
-  return Math.random().toString(36).substr(2, 6).toUpperCase();
-}
-
-// Fonction pour sauvegarder les statistiques
-async function savePlayerStats() {
-  try {
-    await Stats.findOneAndUpdate(
-      { id: 'global' },
-      { 
-        online: onlinePlayers,
-        total: totalPlayers,
-        lastUpdated: new Date()
-      },
-      { upsert: true }
-    );
-    console.log(`Statistiques sauvegardées: ${onlinePlayers} en ligne, ${totalPlayers} au total`);
-  } catch (err) {
-    console.error('Erreur lors de la sauvegarde des statistiques:', err);
-  }
-}
-
-// Fonction pour calculer le score moyen (améliorée)
-function calculateAverageScore() {
-  // Si nous avons des scores dans le leaderboard
-  if (leaderboard.length > 0) {
-    const sum = leaderboard.reduce((total, player) => total + player.score, 0);
-    return Math.round(sum / leaderboard.length);
-  }
-  
-  // Si nous avons des parties actives, calculer la moyenne des scores en cours
-  let activePlayers = 0;
-  let activeScoresSum = 0;
-  
-  games.forEach(game => {
-    game.players.forEach(player => {
-      activePlayers++;
-      activeScoresSum += player.score || 0;
-    });
-  });
-  
-  if (activePlayers > 0) {
-    return Math.round(activeScoresSum / activePlayers);
-  }
-  
-  return 0; // Pas de scores disponibles
-}
-
-// Fonction pour calculer la tendance d'activité
-function calculateOnlineTrend() {
-  const now = Date.now();
-  
-  // Ajouter le nombre actuel à l'historique
-  playersHistory.timestamps.push(now);
-  playersHistory.counts.push(onlinePlayers);
-  
-  // Ne garder que les X dernières entrées
-  if (playersHistory.timestamps.length > playersHistory.maxEntries) {
-    playersHistory.timestamps.shift();
-    playersHistory.counts.shift();
-  }
-  
-  // Si nous avons suffisamment d'historique pour calculer une tendance (au moins 2 points)
-  if (playersHistory.counts.length >= 2) {
-    // Comparer avec la valeur d'il y a 1 heure (ou la plus ancienne disponible)
-    const current = onlinePlayers;
-    const previous = playersHistory.counts[0];
-    
-    return current - previous;
-  }
-  
-  return 0; // Pas assez de données
-}
-
-// Mettre à jour l'historique des joueurs toutes les heures
+// Mise à jour de l'historique des joueurs (pour la tendance)
 setInterval(() => {
-  calculateOnlineTrend(); // Cette fonction met à jour l'historique
-}, 3600000); // 3600000 ms = 1 heure
+  calculateOnlineTrend();
+}, 3600000); // 1 heure
 
-// Enregistrer l'historique des statistiques toutes les heures
+// Enregistrer l'historique des statistiques
 setInterval(async () => {
   try {
     await StatsHistory.create({
@@ -705,45 +743,8 @@ setInterval(async () => {
   } catch (err) {
     console.error('Erreur lors de l\'enregistrement de l\'historique:', err);
   }
-}, 3600000); // 3600000 ms = 1 heure
+}, 3600000); // 1 heure
 
-app.get('/admin', (req, res) => {
-  const password = req.query.key;
-  const adminPassword = 'QUENTIN44';
-  
-  // Vérifier uniquement le mot de passe sans restriction d'IP
-  if (password === adminPassword) {
-    res.sendFile(path.join(__dirname, 'public', 'admin.html'));
-  } else {
-    res.status(403).send('<h1>Accès refusé</h1><p>Mot de passe incorrect</p>');
-  }
-});
-
+// ===== DÉMARRAGE DU SERVEUR =====
 const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => console.log(`Server running on port ${PORT}`));
-
-// Fonction pour sauvegarder une partie terminée dans l'historique
-async function saveGameToHistory(gameId, game, finalResults) {
-  try {
-    // Créer un document d'historique de partie
-    await GameHistory.create({
-      gameId: gameId,
-      startTime: game.startTime || new Date(Date.now() - 1000 * 60 * game.rounds), // Estimation si startTime non disponible
-      endTime: new Date(),
-      rounds: game.rounds,
-      players: finalResults,
-      locations: game.locations
-    });
-    
-    console.log(`Partie ${gameId} sauvegardée dans l'historique`);
-  } catch (err) {
-    console.error('Erreur lors de l\'enregistrement de l\'historique de partie:', err);
-  }
-}
-
-// Dans votre fichier JavaScript admin
-function refreshGameHistory() {
-  socket.emit('getGameHistory');
-  document.getElementById('game-history').innerHTML = '<tr><td colspan="6">Chargement de l\'historique...</td></tr>';
-}
-
+server.listen(PORT, () => console.log(`Serveur démarré sur le port ${PORT}`));
