@@ -2,33 +2,6 @@
 <html>
 <head>
     <title>GeoGuessr Solo & Multijoueur</title>
-    <!-- Balises SEO de base -->
-    <meta name="description" content="Testez vos connaissances géographiques avec GeoGuessr Clone. Jouez en solo ou affrontez vos amis en multijoueur en temps réel !">
-    <meta name="keywords" content="geoguessr, jeu géographie, streetview, multijoueur, quiz de géographie">
-    <meta name="author" content="QM">
-    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🌍</text></svg>">
-    <!-- Balises pour mobile -->
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    
-    <!-- Balises Open Graph pour le partage sur réseaux sociaux -->
-    <meta property="og:type" content="website">
-    <meta property="og:url" content="https://geo-loc-a955.onrender.com/">
-    <meta property="og:title" content="GeoGuessr Solo & Multijoueur">
-    <meta property="og:description" content="Testez vos connaissances géographiques en devinant où vous vous trouvez dans le monde. Jouez en solo ou en multijoueur !">
-    
-    <!-- Balises Twitter Card -->
-    <meta name="twitter:card" content="summary_large_image">
-    <meta name="twitter:title" content="GeoGuessr Solo & Multijoueur">
-    <meta name="twitter:description" content="Testez vos connaissances géographiques en devinant où vous vous trouvez dans le monde.">
-    
-    <!-- Favicon -->
-    <link rel="icon" type="image/png" href="favicon.png">
-    <link rel="apple-touch-icon" href="apple-touch-icon.png">
-    
-    <!-- Autres balises utiles -->
-    <meta name="theme-color" content="#2d6a4f">
-    <meta name="robots" content="index, follow">
-    <link rel="canonical" href="https://geo-loc-a955.onrender.com/">
     <meta charset="utf-8">
     <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
     <style>
@@ -227,6 +200,9 @@
                 padding: 6px 10px;
                 font-size: 1em;
             }
+            .side-panel {
+                display: none; /* Masquer sur mobile */
+            }
         }
 
         .side-panel {
@@ -276,10 +252,84 @@
         .silver { background-color: rgba(192,192,192,0.2); }
         .bronze { background-color: rgba(205,127,50,0.2); }
 
-        @media (max-width: 700px) {
-            .side-panel {
-                display: none; /* Masquer sur mobile */
-            }
+        /* Style pour le mode plein écran */
+        .fullscreen {
+            position: fixed !important;
+            top: 0;
+            left: 0;
+            width: 100vw !important;
+            height: 100vh !important;
+            z-index: 1000;
+        }
+
+        /* Style pour l'affichage des résultats */
+        .results-overlay {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            background-color: rgba(255, 255, 255, 0.9);
+            padding: 15px;
+            border-radius: 5px;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+            max-width: 300px;
+            z-index: 1001;
+        }
+
+        .result-item {
+            display: flex;
+            justify-content: space-between;
+            margin: 5px 0;
+            padding: 5px;
+            border-bottom: 1px solid #eee;
+        }
+
+        .player-rank {
+            font-weight: bold;
+            width: 25px;
+        }
+
+        .player-name {
+            flex-grow: 1;
+            margin: 0 10px;
+        }
+
+        .player-distance {
+            color: #555;
+            margin-right: 10px;
+        }
+
+        .player-score {
+            font-weight: bold;
+            color: #28a745;
+        }
+
+        .countdown {
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background-color: rgba(0, 0, 0, 0.7);
+            color: white;
+            padding: 10px 20px;
+            border-radius: 20px;
+            font-size: 18px;
+            z-index: 1001;
+        }
+
+        #guess-status {
+            text-align: center;
+            margin: 10px 0;
+            font-style: italic;
+            color: #555;
+            background-color: rgba(255, 255, 255, 0.8);
+            padding: 8px;
+            border-radius: 5px;
+            position: fixed;
+            bottom: 80px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 1001;
+            min-width: 250px;
         }
     </style>
 </head>
@@ -354,6 +404,7 @@
             <div>Manche: <span id="current-round">1</span>/<span id="total-rounds">5</span></div>
         </div>
         <div id="timer">40s</div>
+        <div id="guess-status">Cliquez sur la carte pour deviner l'emplacement</div>
         <button class="btn" id="submit-btn" onclick="submitGuess()">Valider la position</button>
     </div>
 
@@ -366,6 +417,7 @@
             <div>Manche: <span id="current-round-multi">1</span>/<span id="total-rounds-multi">5</span></div>
         </div>
         <div id="timer-multi">40s</div>
+        <div id="guess-status-multi">Cliquez sur la carte pour deviner l'emplacement</div>
         <button class="btn" id="submit-btn-multi" onclick="submitGuessMulti()">Valider la position</button>
     </div>
 
@@ -403,7 +455,7 @@
             canGuess: true
         };
         
-        // Nouvelle variable pour le mode multijoueur
+        // Variable pour le mode multijoueur
         let multiConfig = {
             gameId: null,
             players: [],
@@ -466,6 +518,7 @@
             document.getElementById('loading-screen').style.display = 'none';
             document.getElementById('game-container').style.display = 'block';
             document.getElementById('stats-panel').style.display = 'none';
+            document.getElementById('guess-status').textContent = 'Cliquez sur la carte pour deviner l\'emplacement';
 
             // Initialisation Street View
             gameConfig.panorama = new google.maps.StreetViewPanorama(
@@ -501,6 +554,7 @@
                         url: 'http://maps.google.com/mapfiles/ms/icons/red-dot.png'
                     }
                 });
+                document.getElementById('guess-status').textContent = 'Position sélectionnée. Cliquez sur "Valider" pour confirmer.';
             });
 
             // Configuration HUD
@@ -525,6 +579,7 @@
                 <div id="score">Score: ${gameConfig.score}</div>
                 <div>Manche: <span id="current-round">${gameConfig.currentRound + 1}</span>/<span id="total-rounds">${gameConfig.rounds}</span></div>
             `;
+            document.getElementById('guess-status').textContent = 'Cliquez sur la carte pour deviner l\'emplacement';
             
             // Important: Positionnement correct de la Street View
             gameConfig.panorama.setPosition(gameConfig.locations[gameConfig.currentRound]);
@@ -576,6 +631,8 @@
             bounds.extend(guessPosition);
             bounds.extend(realPosition);
             gameConfig.map.fitBounds(bounds, { padding: 50 });
+            
+            document.getElementById('guess-status').textContent = `Distance: ${distance.toFixed(2)} km - Score: ${roundScore} points`;
             
             // Affichage du résultat
             document.getElementById('result-info').style.display = 'block';
@@ -661,7 +718,7 @@
             }
         }
 
-        // Fonctions pour le multijoueur (squelettes de base)
+        // Fonctions pour le multijoueur
         function createGame() {
             const pseudo = document.getElementById('pseudo').value;
             const rounds = parseInt(document.getElementById('rounds').value);
@@ -711,420 +768,393 @@
             
             // Vérifier si le joueur courant est l'hôte
             const isHost = players.some(p => p.id === socket.id && p.isHost);
+            
+            // Afficher ou cacher les options d'hôte
             document.getElementById('host-options').style.display = isHost ? 'block' : 'none';
             document.getElementById('start-multi-btn').style.display = isHost ? 'block' : 'none';
             
             players.forEach(player => {
                 const li = document.createElement('li');
-                li.textContent = player.pseudo + (player.isHost ? ' (Hôte)' : '');
-                li.style.padding = '8px';
-                li.style.margin = '5px 0';
-                li.style.backgroundColor = 'rgba(255,255,255,0.5)';
-                li.style.borderRadius = '5px';
+                li.innerHTML = `
+                    <div style="display: flex; justify-content: space-between; padding: 10px;">
+                        <span>${player.pseudo} ${player.isHost ? '(Hôte)' : ''}</span>
+                        <span>${player.score || 0} pts</span>
+                    </div>
+                `;
                 playerList.appendChild(li);
             });
         }
 
+        function initializeMultiGame(gameData) {
+            document.getElementById('lobby').style.display = 'none';
+            document.getElementById('game').style.display = 'block';
+            
+            multiConfig.locations = gameData.locations;
+            multiConfig.rounds = gameData.rounds;
+            multiConfig.currentRound = gameData.currentRound;
+            multiConfig.score = 0;
+            multiConfig.canGuess = true;
+            
+            // Initialisation Street View multi
+            multiConfig.panorama = new google.maps.StreetViewPanorama(
+                document.getElementById('street-view-multi'), 
+                {
+                    disableDefaultUI: true,
+                    zoomControl: true,
+                    addressControl: false,
+                    fullscreenControl: false,
+                    showRoadLabels: false,
+                    linksControl: true
+                }
+            );
+            
+            // Initialisation carte multi
+            multiConfig.map = new google.maps.Map(document.getElementById('map-multi'), {
+                center: {lat: 0, lng: 0},
+                zoom: 2,
+                minZoom: 2,
+                streetViewControl: false,
+                mapTypeControl: false,
+                fullscreenControl: false
+            });
+            
+            // Écouteur de clic sur la carte
+            multiConfig.map.addListener('click', (e) => {
+                if (!multiConfig.canGuess) return;
+                if (multiConfig.guessMarker) multiConfig.guessMarker.setMap(null);
+                multiConfig.guessMarker = new google.maps.Marker({
+                    position: e.latLng,
+                    map: multiConfig.map,
+                    icon: {
+                        url: 'http://maps.google.com/mapfiles/ms/icons/red-dot.png'
+                    }
+                });
+                document.getElementById('guess-status-multi').textContent = 'Position sélectionnée. Cliquez sur "Valider" pour confirmer.';
+            });
+            
+            // Configuration HUD multi
+            document.getElementById('score-multi').textContent = `Score: ${multiConfig.score}`;
+            document.getElementById('total-rounds-multi').textContent = multiConfig.rounds;
+            
+            startRoundMulti();
+        }
+
+        function startRoundMulti() {
+            multiConfig.timeLeft = 40;
+            multiConfig.canGuess = true;
+            
+            if (multiConfig.guessMarker) multiConfig.guessMarker.setMap(null);
+            multiConfig.guessMarker = null;
+            
+            document.getElementById('timer-multi').textContent = '40s';
+            document.getElementById('submit-btn-multi').disabled = false;
+            document.getElementById('current-round-multi').textContent = (multiConfig.currentRound + 1).toString();
+            document.getElementById('score-multi').textContent = `Score: ${multiConfig.score}`;
+            document.getElementById('guess-status-multi').textContent = 'Cliquez sur la carte pour deviner l\'emplacement';
+            
+            // Positionner Street View à l'emplacement actuel
+            const currentLocation = multiConfig.locations[multiConfig.currentRound];
+            multiConfig.panorama.setPosition({lat: currentLocation.lat, lng: currentLocation.lng});
+            multiConfig.panorama.setPov({heading: 0, pitch: 0});
+            multiConfig.panorama.setVisible(true);
+            
+            // Réinitialiser la carte
+            multiConfig.map.setCenter({lat: 0, lng: 0});
+            multiConfig.map.setZoom(2);
+            multiConfig.map.setOptions({ draggable: true, zoomControl: true });
+            
+            // Démarrer le timer
+            clearInterval(multiConfig.timer);
+            multiConfig.timer = setInterval(() => {
+                multiConfig.timeLeft--;
+                document.getElementById('timer-multi').textContent = `${multiConfig.timeLeft}s`;
+                
+                if (multiConfig.timeLeft <= 0) {
+                    clearInterval(multiConfig.timer);
+                    document.getElementById('submit-btn-multi').disabled = true;
+                    submitGuessMulti(true); // Soumission automatique
+                }
+            }, 1000);
+        }
+
+        function submitGuessMulti(auto = false) {
+            if (!multiConfig.canGuess) return;
+            multiConfig.canGuess = false;
+            clearInterval(multiConfig.timer);
+            document.getElementById('submit-btn-multi').disabled = true;
+            multiConfig.map.setOptions({ draggable: false, zoomControl: false });
+            
+            // Récupérer la position du marqueur ou du centre de la carte
+            const guessPosition = multiConfig.guessMarker ? 
+                multiConfig.guessMarker.getPosition() : 
+                multiConfig.map.getCenter();
+            
+            const currentLocation = multiConfig.locations[multiConfig.currentRound];
+            const distance = calculateDistance(
+                {lat: currentLocation.lat, lng: currentLocation.lng}, 
+                {lat: guessPosition.lat(), lng: guessPosition.lng()}
+            );
+            const roundScore = calculateScore(distance);
+            multiConfig.score += roundScore;
+            
+            // Informer le serveur de notre réponse
+            socket.emit('submitGuess', multiConfig.gameId, {
+                position: {lat: guessPosition.lat(), lng: guessPosition.lng()},
+                distance: distance,
+                score: roundScore
+            });
+            
+            // Afficher un message d'attente
+            document.getElementById('guess-status-multi').textContent = 'Réponse soumise, attente des autres joueurs...';
+        }
+
         // Écouteurs d'événements Socket.io
+
+        // Quand la partie est créée
         socket.on('gameCreated', (gameId) => {
-            console.log('Partie créée avec le code:', gameId);
             showLobby(gameId);
         });
 
-        socket.on('playerJoined', (players) => {
-            console.log('Liste des joueurs mise à jour:', players);
-            multiConfig.players = players;
+        // Quand on a rejoint une partie
+        socket.on('joinedGame', (gameId, players) => {
+            showLobby(gameId);
             updatePlayerList(players);
         });
 
+        // Quand la liste des joueurs est mise à jour
+        socket.on('playerJoined', (players) => {
+            updatePlayerList(players);
+        });
+
+        // Erreur de partie
         socket.on('gameError', (message) => {
             document.getElementById('menu-error').textContent = message;
         });
 
-        // Dans votre section "Écouteurs d'événements Socket.io", ajoutez :
-        socket.on('joinedGame', (gameId, players) => {
-            console.log('Partie rejointe avec le code:', gameId);
-            showLobby(gameId);
-            multiConfig.players = players;
-            updatePlayerList(players);
+        // Quand le serveur demande des emplacements
+        socket.on('requestLocations', (gameId, rounds) => {
+            generateLocationsForMulti(gameId, rounds);
         });
 
-        // Ajoutez également un écouteur pour le démarrage de la partie :
+        // Quand la partie démarre
         socket.on('gameStarted', (gameData) => {
-    console.log('La partie commence:', gameData);
-    document.getElementById('lobby').style.display = 'none';
-    document.getElementById('loading-screen').style.display = 'flex';
-    document.getElementById('loading-text').textContent = 'Validation des emplacements...';
-    
-    // Initialiser la configuration de la partie multijoueur
-    multiConfig.locations = [];  // On va reconstruire cette liste
-    multiConfig.currentRound = 0;
-    multiConfig.players = gameData.players;
-    
-    // Vérifier et valider tous les emplacements Street View
-    const sv = new google.maps.StreetViewService();
-    
-    // Vérifier chaque emplacement séquentiellement et remplacer les invalides
-    async function verifyLocations(index = 0) {
-        if (index >= gameData.locations.length) {
-            // Tous les emplacements sont validés, démarrer le jeu
-            document.getElementById('loading-text').textContent = 'Lancement du jeu...';
-            setTimeout(() => {
-                document.getElementById('loading-screen').style.display = 'none';
-                document.getElementById('game').style.display = 'block';
-                document.getElementById('total-rounds-multi').textContent = gameData.rounds;
-                initMultiGame();
-            }, 1000);
-            return;
-        }
-        
-        const location = gameData.locations[index];
-        document.getElementById('loading-text').textContent = 
-            `Validation des emplacements... (${index+1}/${gameData.locations.length})`;
-        
-        // Créer un objet LatLng de Google Maps
-        const position = new google.maps.LatLng(location.lat, location.lng);
-        
-        // Vérifier si l'emplacement est valide
-        try {
-            const result = await checkValidPanorama(sv, position);
-            multiConfig.locations.push(result);  // Stocker l'emplacement valide
-            console.log(`Emplacement ${index+1} validé`);
-            verifyLocations(index + 1);
-        } catch (e) {
-            console.error(`Emplacement ${index+1} invalide, recherche d'un nouvel emplacement...`);
-            // Si l'emplacement est invalide, en trouver un nouveau
-            try {
-                const newLocation = await findValidLocation(sv);
-                multiConfig.locations.push({
-                    lat: newLocation.lat(),
-                    lng: newLocation.lng()
-                });
-                console.log(`Nouvel emplacement ${index+1} trouvé`);
-                verifyLocations(index + 1);
-            } catch (err) {
-                console.error("Impossible de trouver un nouvel emplacement valide", err);
-                // Réessayer
-                setTimeout(() => verifyLocations(index), 500);
-            }
-        }
-    }
-    
-    // Démarrer la vérification
-    verifyLocations();
-});
-
-// Fonction utilitaire pour vérifier si un panorama est valide
-function checkValidPanorama(streetViewService, position) {
-    return new Promise((resolve, reject) => {
-        streetViewService.getPanorama({
-            location: position,
-            radius: 100
-        }, (data, status) => {
-            if (status === 'OK') {
-                resolve({
-                    lat: data.location.latLng.lat(),
-                    lng: data.location.latLng.lng()
-                });
-            } else {
-                reject(status);
-            }
+            initializeMultiGame(gameData);
         });
-    });
-}
 
-        function initMultiGame() {
-            document.getElementById('stats-panel').style.display = 'none';
-    console.log("Initialisation du jeu multijoueur");
-    
-    // Initialisation Street View pour le multijoueur
-    multiConfig.panorama = new google.maps.StreetViewPanorama(
-        document.getElementById('street-view-multi'), 
-        {
-            disableDefaultUI: true,
-            zoomControl: true,
-            addressControl: false,
-            fullscreenControl: false,
-            showRoadLabels: false,  // Masque les noms de rues
-            linksControl: true      // Garde les flèches de navigation
-        }
-    );
-
-    // Initialisation carte pour le multijoueur
-    multiConfig.map = new google.maps.Map(document.getElementById('map-multi'), {
-        center: {lat: 0, lng: 0},
-        zoom: 2,
-        minZoom: 2,
-        streetViewControl: false,
-        mapTypeControl: false,
-        fullscreenControl: false
-    });
-
-    // Force le positionnement correct de la carte
-    const mapElement = document.getElementById('map-multi');
-    mapElement.style.position = 'fixed';
-    mapElement.style.bottom = '90px';
-    mapElement.style.right = '30px';
-    mapElement.style.left = 'auto';
-    mapElement.style.top = 'auto';
-
-    // Écouteur de clic sur la carte
-    multiConfig.map.addListener('click', (e) => {
-        if(!multiConfig.canGuess) return;
-        if(multiConfig.guessMarker) multiConfig.guessMarker.setMap(null);
-        multiConfig.guessMarker = new google.maps.Marker({
-            position: e.latLng,
-            map: multiConfig.map,
-            icon: {
-                url: 'http://maps.google.com/mapfiles/ms/icons/red-dot.png'
-            }
-        });
-    });
-
-    // Démarrer la première manche
-    startMultiRound();
-}
-
-function startMultiRound() {
-    console.log("Démarrage de la manche multijoueur", multiConfig.currentRound);
-    
-    multiConfig.timeLeft = 40;
-    multiConfig.canGuess = true;
-    if(multiConfig.guessMarker) multiConfig.guessMarker.setMap(null);
-    if(multiConfig.answerMarker) multiConfig.answerMarker.setMap(null);
-    multiConfig.guessMarker = null;
-    multiConfig.answerMarker = null;
-    
-    document.getElementById('timer-multi').textContent = '40s';
-    document.getElementById('submit-btn-multi').disabled = false;
-    document.getElementById('score-multi').textContent = `Score: ${multiConfig.score || 0}`;
-    document.getElementById('current-round-multi').textContent = (multiConfig.currentRound+1).toString();
-    
-    // Les emplacements ont déjà été validés lors du chargement
-    const location = multiConfig.locations[multiConfig.currentRound];
-    if (location) {
-        console.log("Position panorama:", location);
-        const position = new google.maps.LatLng(location.lat, location.lng);
-        
-        // Plus besoin de vérifier, on sait que l'emplacement est valide
-        multiConfig.panorama.setPosition(position);
-        multiConfig.panorama.setPov({heading: 0, pitch: 0});
-        multiConfig.panorama.setVisible(true);
-        
-        // Réinitialisation de la carte
-        multiConfig.map.setCenter({lat: 0, lng: 0});
-        multiConfig.map.setZoom(2);
-        multiConfig.map.setOptions({ draggable: true, zoomControl: true });
-        
-        // Démarrer le timer
-        startMultiTimer();
-    } else {
-        console.error("Emplacement non défini pour la manche", multiConfig.currentRound);
-    }
-}
-
-function startMultiTimer() {
-    clearInterval(multiConfig.timer);
-    multiConfig.timer = setInterval(() => {
-        multiConfig.timeLeft--;
-        document.getElementById('timer-multi').textContent = `${multiConfig.timeLeft}s`;
-        if(multiConfig.timeLeft <= 0) {
-            clearInterval(multiConfig.timer);
+        // Quand notre réponse est enregistrée
+        socket.on('guessRegistered', () => {
+            // Désactiver le bouton de validation
             document.getElementById('submit-btn-multi').disabled = true;
-            submitGuessMulti(true);
-        }
-    }, 1000);
-}
+            document.getElementById('guess-status-multi').textContent = "Votre réponse est enregistrée. En attente des autres joueurs...";
+        });
 
-function submitGuessMulti(auto = false) {
-    if(!multiConfig.canGuess) return;
-    multiConfig.canGuess = false;
-    clearInterval(multiConfig.timer);
-    document.getElementById('submit-btn-multi').disabled = true;
-    multiConfig.map.setOptions({ draggable: false, zoomControl: false });
-    
-    const guessPosition = multiConfig.guessMarker?.getPosition() || multiConfig.map.getCenter();
-    const realPosition = new google.maps.LatLng(
-        multiConfig.locations[multiConfig.currentRound].lat, 
-        multiConfig.locations[multiConfig.currentRound].lng
-    );
-    
-    const distance = calculateDistance(realPosition, guessPosition);
-    const roundScore = calculateScore(distance);
-    multiConfig.score = (multiConfig.score || 0) + roundScore;
-    
-    if(multiConfig.answerMarker) multiConfig.answerMarker.setMap(null);
-    multiConfig.answerMarker = new google.maps.Marker({
-        position: realPosition,
-        map: multiConfig.map,
-        icon: {
-            url: "http://maps.google.com/mapfiles/ms/icons/green-dot.png"
-        }
-    });
+        // Mise à jour du statut des réponses
+        socket.on('guessProgress', (data) => {
+            document.getElementById('guess-status-multi').textContent = `${data.answered}/${data.total} joueurs ont répondu`;
+        });
 
-    // Ajout du dézoom pour voir les deux points
-    const bounds = new google.maps.LatLngBounds();
-    bounds.extend(guessPosition);
-    bounds.extend(realPosition);
-    multiConfig.map.fitBounds(bounds, { padding: 50 });
-    
-    // Affichage du résultat temporaire en attendant les autres joueurs
-    document.getElementById('results').style.display = 'block';
-    document.getElementById('results').innerHTML = `
-        <h3>Votre résultat</h3>
-        <p><b>Distance :</b> ${Math.round(distance)} km</p>
-        <p><b>Points :</b> ${roundScore}</p>
-        <p>En attente des autres joueurs...</p>
-        <div class="loader" style="margin:15px auto;"></div>
-    `;
-
-    // Envoyer le résultat au serveur au lieu de passer à la manche suivante localement
-    socket.emit('submitGuess', multiConfig.gameId, {
-        distance: distance,
-        score: roundScore,
-        round: multiConfig.currentRound
-    });
-}
-
-function endMultiGame() {
-    document.getElementById('stats-panel').style.display = 'block';
-    document.getElementById('game').innerHTML = `
-        <div style="text-align:center; padding: 50px; color: white;">
-            <h2>Partie terminée !</h2>
-            <p>Votre score final: ${multiConfig.score}</p>
-            <button class="btn" onclick="backToMain()">Retour au menu</button>
-        </div>
-    `;
-}
-
-// Ajoutez cet écouteur d'événement
-socket.on('requestLocations', async (gameId, roundCount) => {
-    console.log(`Génération de ${roundCount} emplacements pour la partie ${gameId}`);
-    document.getElementById('loading-screen').style.display = 'flex';
-    document.getElementById('loading-text').textContent = 'Génération des emplacements...';
-    
-    // Générer des emplacements valides
-    const sv = new google.maps.StreetViewService();
-    const locations = [];
-    
-    for (let i = 0; i < roundCount; i++) {
-        document.getElementById('loading-text').textContent = 
-            `Génération des emplacements... (${i+1}/${roundCount})`;
+        // Quand la manche est terminée
+        socket.on('roundComplete', (data) => {
+            // Extraire les données
+            const results = data.results;
+            const actualPosition = data.actualPosition;
             
-        try {
-            const location = await findValidLocation(sv);
-            locations.push({ 
-                lat: location.lat(), 
-                lng: location.lng() 
+            // Passer la carte en mode plein écran
+            document.getElementById('map-multi').classList.add('fullscreen');
+            
+            // Centrer la carte sur la position réelle
+            multiConfig.map.setCenter({lat: actualPosition.lat, lng: actualPosition.lng});
+            multiConfig.map.setZoom(3); // Zoom adapté pour voir toutes les positions
+            
+            // Ajouter un marqueur pour la position réelle
+            const actualMarker = new google.maps.Marker({
+                position: {lat: actualPosition.lat, lng: actualPosition.lng},
+                map: multiConfig.map,
+                icon: 'https://maps.google.com/mapfiles/ms/icons/green-dot.png', // Marqueur vert pour la position réelle
+                title: 'Position réelle'
             });
-            console.log(`Emplacement ${i+1}/${roundCount} trouvé`);
-        } catch (err) {
-            console.error("Erreur lors de la génération d'un emplacement, réessai...", err);
-            i--; // Réessayer
+            
+            // Tableau pour stocker tous les marqueurs
+            const playerMarkers = [];
+            
+            // Créer un div pour afficher les résultats
+            const resultsDiv = document.createElement('div');
+            resultsDiv.className = 'results-overlay';
+            resultsDiv.innerHTML = '<h2>Résultats du tour</h2>';
+            
+            // Tableau pour trier les résultats
+            const sortedResults = [...results].sort((a, b) => a.distance - b.distance);
+            
+            // Ajouter les marqueurs et les résultats pour chaque joueur
+            sortedResults.forEach((result, index) => {
+                // Ajouter un marqueur pour la position du joueur
+                const playerColor = getPlayerColor(index); // Fonction à définir pour attribuer une couleur par joueur
+                const playerMarker = new google.maps.Marker({
+                    position: result.position,
+                    map: multiConfig.map,
+                    icon: `https://maps.google.com/mapfiles/ms/icons/${playerColor}-dot.png`,
+                    title: result.pseudo
+                });
+                playerMarkers.push(playerMarker);
+                
+                // Tracer une ligne entre la position devinée et la position réelle
+                const line = new google.maps.Polyline({
+                    path: [result.position, {lat: actualPosition.lat, lng: actualPosition.lng}],
+                    geodesic: true,
+                    strokeColor: getLineColor(index),
+                    strokeOpacity: 0.8,
+                    strokeWeight: 2,
+                    map: multiConfig.map
+                });
+                
+                // Ajouter l'entrée dans le tableau des résultats
+                const resultItem = document.createElement('div');
+                resultItem.className = 'result-item';
+                resultItem.innerHTML = `
+                    <span class="player-rank">${index + 1}.</span>
+                    <span class="player-name">${result.pseudo}</span>
+                    <span class="player-distance">${result.distance.toFixed(2)} km</span>
+                    <span class="player-score">+${result.score} pts</span>
+                `;
+                resultsDiv.appendChild(resultItem);
+            });
+            
+            // Ajouter le tableau des résultats à la page
+            document.getElementById('game').appendChild(resultsDiv);
+            
+            // Fonction pour attribuer une couleur à chaque joueur
+            function getPlayerColor(index) {
+                const colors = ['red', 'blue', 'yellow', 'purple', 'orange', 'pink'];
+                return colors[index % colors.length];
+            }
+            
+            // Fonction pour obtenir une couleur de ligne
+            function getLineColor(index) {
+                const colors = ['#FF0000', '#0000FF', '#FFFF00', '#800080', '#FFA500', '#FFC0CB'];
+                return colors[index % colors.length];
+            }
+            
+            // Timer pour passer au tour suivant
+            let countdown = 10;
+            const countdownElement = document.createElement('div');
+            countdownElement.className = 'countdown';
+            countdownElement.innerText = `Prochain tour dans: ${countdown}s`;
+            document.getElementById('game').appendChild(countdownElement);
+            
+            const timer = setInterval(() => {
+                countdown--;
+                countdownElement.innerText = `Prochain tour dans: ${countdown}s`;
+                if (countdown <= 0) {
+                    clearInterval(timer);
+                }
+            }, 1000);
+            
+            // Nettoyer les résultats après le délai
+            setTimeout(() => {
+                // Supprimer la classe fullscreen
+                document.getElementById('map-multi').classList.remove('fullscreen');
+                
+                // Supprimer les marqueurs
+                actualMarker.setMap(null);
+                playerMarkers.forEach(marker => marker.setMap(null));
+                
+                // Supprimer les éléments d'affichage
+                if (resultsDiv.parentNode) {
+                    resultsDiv.parentNode.removeChild(resultsDiv);
+                }
+                if (countdownElement.parentNode) {
+                    countdownElement.parentNode.removeChild(countdownElement);
+                }
+            }, 10000);
+        });
+
+        // Passer à la manche suivante
+        socket.on('nextRound', (roundNumber) => {
+            multiConfig.currentRound = roundNumber;
+            startRoundMulti();
+        });
+
+        // Fin de la partie
+        socket.on('endGame', (results) => {
+            clearInterval(multiConfig.timer);
+            
+            // Trier les résultats par score
+            results.sort((a, b) => b.score - a.score);
+            
+            // Trouver le rang du joueur actuel
+            const userIndex = results.findIndex(p => p.pseudo === document.getElementById('pseudo').value);
+            const userRank = userIndex + 1;
+            
+            // Construire le tableau HTML des résultats
+            let resultsTable = '<table style="width:100%; margin-top:20px;"><tr><th>Rang</th><th>Joueur</th><th>Score</th></tr>';
+            
+            results.forEach((player, index) => {
+                const isCurrentPlayer = player.pseudo === document.getElementById('pseudo').value;
+                resultsTable += `
+                    <tr ${isCurrentPlayer ? 'style="background-color:#40916c30; font-weight:bold;"' : ''}>
+                        <td>${index + 1}</td>
+                        <td>${player.pseudo}</td>
+                        <td>${player.score}</td>
+                    </tr>
+                `;
+            });
+            
+            resultsTable += '</table>';
+            
+            // Afficher les résultats finaux
+            document.getElementById('game').innerHTML = `
+                <div style="text-align:center; padding: 50px; background:#fff; margin:20px auto; max-width:500px; border-radius:15px;">
+                    <h2>Partie terminée !</h2>
+                    <p>Vous êtes arrivé ${userRank}<sup>${userRank === 1 ? 'er' : 'ème'}</sup> sur ${results.length} joueurs</p>
+                    <p>Votre score : ${results[userIndex].score} points</p>
+                    ${resultsTable}
+                    <button class="btn" style="margin-top:20px;" onclick="location.reload()">Revenir au menu</button>
+                </div>
+            `;
+
+            // Sauvegarder le score
+            socket.emit('saveScore', {
+                pseudo: document.getElementById('pseudo').value,
+                score: results[userIndex].score
+            });
+            
+            // Enregistrer le joueur
+            socket.emit('registerPlayer', document.getElementById('pseudo').value);
+        });
+
+        // Fonction pour générer des emplacements pour le multijoueur
+        async function generateLocationsForMulti(gameId, rounds) {
+            document.getElementById('lobby').style.display = 'none';
+            document.getElementById('loading-screen').style.display = 'flex';
+            
+            const locations = [];
+            const sv = new google.maps.StreetViewService();
+            
+            for (let i = 0; i < rounds; i++) {
+                const location = await findValidLocation(sv);
+                locations.push({
+                    lat: location.lat(),
+                    lng: location.lng()
+                });
+                updateLoaderProgress(i + 1, rounds);
+            }
+            
+            // Envoyer les emplacements au serveur
+            socket.emit('proposeLocations', gameId, locations);
         }
-    }
-    
-    console.log(`${locations.length} emplacements générés et envoyés au serveur`);
-    // Envoyer les emplacements au serveur
-    socket.emit('proposeLocations', gameId, locations);
-});
 
-    // Ajouter ces écouteurs à la fin de votre script
+        // Statistiques
+        socket.on('playerStats', (stats) => {
+            document.getElementById('online-players-count').textContent = stats.online;
+            document.getElementById('total-players-count').textContent = stats.total;
+        });
 
-    // Quand tous les joueurs ont répondu, le serveur envoie les résultats
-    socket.on('roundComplete', (results) => {
-        document.getElementById('results').innerHTML = `
-            <h3>Résultats de la manche</h3>
-            <table style="width:100%; border-collapse: collapse; margin: 10px 0">
-                <tr style="border-bottom: 1px solid #ddd;">
-                    <th style="text-align:left; padding: 5px">Joueur</th>
-                    <th style="text-align:right; padding: 5px">Distance</th>
-                    <th style="text-align:right; padding: 5px">Points</th>
-                </tr>
-                ${results.map(r => `
-                    <tr style="border-bottom: 1px solid #eee">
-                        <td style="text-align:left; padding: 5px">${r.pseudo}</td>
-                        <td style="text-align:right; padding: 5px">${Math.round(r.distance)} km</td>
-                        <td style="text-align:right; padding: 5px">${r.score}</td>
-                    </tr>
-                `).join('')}
-            </table>
-            <p>Passage à la manche suivante...</p>
-        `;
-    });
+        // Demander les statistiques au chargement
+        socket.emit('getPlayerStats');
 
-    // Le serveur indique quand passer à la manche suivante
-    socket.on('nextRound', (roundIndex) => {
-        document.getElementById('results').style.display = 'none';
-        multiConfig.currentRound = roundIndex;
-        startMultiRound();
-    });
-
-    // Le serveur indique quand la partie est terminée
-    socket.on('endGame', (finalResults) => {
-    // Cacher le pop-up des résultats de la dernière manche
-    document.getElementById('results').style.display = 'none';
-    
-    document.getElementById('game').innerHTML = `
-        <div style="text-align:center; padding: 50px; color: white;">
-            <h2>Partie terminée !</h2>
-            <table style="width:80%; margin:20px auto; color:white; border-collapse:collapse;">
-                <tr style="border-bottom:1px solid white;">
-                    <th style="padding:10px; text-align:left;">Joueur</th>
-                    <th style="padding:10px; text-align:right;">Score</th>
-                </tr>
-                ${finalResults.map(player => `
-                    <tr style="border-bottom:1px solid rgba(255,255,255,0.3);">
-                        <td style="padding:10px; text-align:left;">${player.pseudo}</td>
-                        <td style="padding:10px; text-align:right;">${player.score}</td>
-                    </tr>
-                `).join('')}
-            </table>
-            <button class="btn" onclick="backToMain()">Retour au menu</button>
-        </div>
-    `;
-}); 
-
-// Chargement du classement et des joueurs récents
-function loadLeaderboard() {
-  socket.emit('getLeaderboard');
-}
-
-function loadRecentPlayers() {
-  socket.emit('getRecentPlayers');
-}
-
-// Charger les données au démarrage
-window.addEventListener('load', () => {
-  loadLeaderboard();
-  loadRecentPlayers();
-});
-
-// Enregistrer le joueur quand il saisit son pseudo
-document.getElementById('pseudo').addEventListener('change', (e) => {
-  const pseudo = e.target.value;
-  if (pseudo && pseudo !== 'Joueur') {
-    socket.emit('registerPlayer', pseudo);
-  }
-});
-
-// Fonction pour mettre à jour les statistiques des joueurs
-function updatePlayerStats() {
-  socket.emit('getPlayerStats');
-}
-
-// Écouteur pour recevoir les statistiques
-socket.on('playerStats', (stats) => {
-  document.getElementById('online-players-count').textContent = stats.online;
-  document.getElementById('total-players-count').textContent = stats.total;
-});
-
-// Charger les statistiques au démarrage et régulièrement
-window.addEventListener('load', () => {
-  updatePlayerStats();
-  // Mettre à jour les statistiques toutes les 30 secondes
-  setInterval(updatePlayerStats, 30000);
-});
+        // Mettre à jour les stats périodiquement
+        setInterval(() => {
+            socket.emit('getPlayerStats');
+        }, 30000); // Toutes les 30 secondes
     </script>
 </body>
-</html>
