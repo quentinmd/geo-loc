@@ -85,6 +85,7 @@ let leaderboard = []; // Cache du leaderboard
 const recentPlayers = [];
 const MAX_RECENT_PLAYERS = 5;
 const games = new Map();
+const playerStates = new Map(); // Pour suivre l'état de chaque joueur
 
 // Historique des joueurs pour le calcul de tendances
 const playersHistory = {
@@ -719,6 +720,39 @@ io.on('connection', (socket) => {
     } catch (err) {
       console.error('Erreur lors de la récupération de l\'historique:', err);
       socket.emit('gameHistory', []);
+    }
+  });
+
+  socket.on('heartbeat', (gameId, currentRound) => {
+    // Vérifier si le joueur est dans la bonne manche
+    if (gameId && games.has(gameId)) {
+      const game = games.get(gameId);
+      
+      // Si le joueur est en retard d'une manche ou plus
+      if (game.currentRound > currentRound) {
+        console.log(`Resynchronisation du joueur ${socket.id}, manche ${currentRound} -> ${game.currentRound}`);
+        
+        // Renvoyer l'état actuel de la partie
+        socket.emit('syncGameState', {
+          currentRound: game.currentRound,
+          players: Array.from(game.players.values()),
+          location: game.locations[game.currentRound]
+        });
+        
+        // Si le joueur est bloqué sur la vue des résultats
+        if (game.roundResults && game.roundResults.size === game.players.size) {
+          const results = Array.from(game.roundResults.values());
+          const currentLocation = game.locations[game.currentRound - 1]; // Manche précédente
+          
+          socket.emit('roundComplete', {
+            results: results,
+            actualPosition: currentLocation
+          });
+        } else {
+          // Juste passer à la manche actuelle
+          socket.emit('nextRound', game.currentRound);
+        }
+      }
     }
   });
 });
