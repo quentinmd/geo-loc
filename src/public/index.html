@@ -939,6 +939,19 @@
         // Quand la partie démarre
         socket.on('gameStarted', (gameData) => {
             initializeMultiGame(gameData);
+            
+            // Marquer le joueur comme actif au début de la partie
+            if (!window.playerStates) window.playerStates = new Map();
+            
+            window.playerStates.set(socket.id, {
+                gameId: gameData.gameId || multiConfig.gameId,
+                lastActive: Date.now(),
+                currentRound: 0,
+                status: 'active'
+            });
+            
+            // Démarrer le heartbeat automatique
+            startHeartbeat();
         });
 
         // Quand notre réponse est enregistrée
@@ -1156,5 +1169,34 @@
         setInterval(() => {
             socket.emit('getPlayerStats');
         }, 30000); // Toutes les 30 secondes
+
+        function startHeartbeat() {
+            // Nettoyer tout heartbeat existant
+            if (window.heartbeatInterval) clearInterval(window.heartbeatInterval);
+            
+            window.heartbeatInterval = setInterval(() => {
+                // N'envoyer que si on est dans une partie
+                if (multiConfig && multiConfig.gameId) {
+                    socket.emit('heartbeat', multiConfig.gameId, multiConfig.currentRound);
+                    console.log(`Heartbeat envoyé: partie ${multiConfig.gameId}, manche ${multiConfig.currentRound}`);
+                }
+            }, 5000); // Toutes les 5 secondes
+        }
+
+        socket.on('syncGameState', (data) => {
+            console.log('Synchronisation reçue:', data);
+            
+            if (multiConfig && multiConfig.gameId) {
+                multiConfig.currentRound = data.currentRound;
+                
+                // Mettre à jour les joueurs si nécessaire
+                if (data.players) {
+                    // Mettre à jour les scores, etc.
+                }
+                
+                // Continuer le jeu avec les données synchronisées
+                startRoundMulti();
+            }
+        });
     </script>
 </body>
