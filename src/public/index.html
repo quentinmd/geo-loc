@@ -657,15 +657,28 @@
         }
 
         function calculateDistance(pos1, pos2) {
-            const R = 6371;
-            const dLat = (pos2.lat() - pos1.lat()) * Math.PI / 180;
-            const dLon = (pos2.lng() - pos1.lng()) * Math.PI / 180;
-            const a = 
-                Math.sin(dLat/2) * Math.sin(dLat/2) +
-                Math.cos(pos1.lat() * Math.PI / 180) * 
-                Math.cos(pos2.lat() * Math.PI / 180) * 
-                Math.sin(dLon/2) * Math.sin(dLon/2);
-            return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+            const lat1 = typeof pos1.lat === 'function' ? pos1.lat() : pos1.lat;
+            const lng1 = typeof pos1.lng === 'function' ? pos1.lng() : pos1.lng;
+            const lat2 = typeof pos2.lat === 'function' ? pos2.lat() : pos2.lat;
+            const lng2 = typeof pos2.lng === 'function' ? pos2.lng() : pos2.lng;
+            
+            // Conversion en radians
+            const lat1Rad = lat1 * Math.PI / 180;
+            const lat2Rad = lat2 * Math.PI / 180;
+            const deltaLat = (lat2 - lat1) * Math.PI / 180;
+            const deltaLng = (lng2 - lng1) * Math.PI / 180;
+            
+            // Formule haversine
+            const a = Math.sin(deltaLat/2) * Math.sin(deltaLat/2) +
+                    Math.cos(lat1Rad) * Math.cos(lat2Rad) *
+                    Math.sin(deltaLng/2) * Math.sin(deltaLng/2);
+            const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+            
+            // Rayon de la Terre en km
+            const earthRadius = 6371;
+            
+            // Distance en kilomètres
+            return earthRadius * c;
         }
         
         function calculateScore(distance) {
@@ -885,21 +898,32 @@
             multiConfig.map.setOptions({ draggable: false, zoomControl: false });
             
             // Récupérer la position du marqueur ou du centre de la carte
-            const guessPosition = multiConfig.guessMarker ? 
-                multiConfig.guessMarker.getPosition() : 
-                multiConfig.map.getCenter();
+            let guessPosition;
+            if (multiConfig.guessMarker) {
+                guessPosition = {
+                    lat: multiConfig.guessMarker.getPosition().lat(),
+                    lng: multiConfig.guessMarker.getPosition().lng()
+                };
+            } else {
+                // Si pas de marqueur, utiliser le centre de la carte
+                const center = multiConfig.map.getCenter();
+                guessPosition = {
+                    lat: center.lat(),
+                    lng: center.lng()
+                };
+            }
             
             const currentLocation = multiConfig.locations[multiConfig.currentRound];
             const distance = calculateDistance(
                 {lat: currentLocation.lat, lng: currentLocation.lng}, 
-                {lat: guessPosition.lat(), lng: guessPosition.lng()}
+                guessPosition
             );
             const roundScore = calculateScore(distance);
             multiConfig.score += roundScore;
             
             // Informer le serveur de notre réponse
             socket.emit('submitGuess', multiConfig.gameId, {
-                position: {lat: guessPosition.lat(), lng: guessPosition.lng()},
+                position: guessPosition,
                 distance: distance,
                 score: roundScore
             });
@@ -938,19 +962,13 @@
 
         // Quand la partie démarre
         socket.on('gameStarted', (gameData) => {
+            // Masquer l'écran de chargement s'il est visible
+            document.getElementById('loading-screen').style.display = 'none';
+            
+            // Initialiser le jeu
             initializeMultiGame(gameData);
             
-            // Marquer le joueur comme actif au début de la partie
-            if (!window.playerStates) window.playerStates = new Map();
-            
-            window.playerStates.set(socket.id, {
-                gameId: gameData.gameId || multiConfig.gameId,
-                lastActive: Date.now(),
-                currentRound: 0,
-                status: 'active'
-            });
-            
-            // Démarrer le heartbeat automatique
+            // Démarrer le heartbeat
             startHeartbeat();
         });
 
